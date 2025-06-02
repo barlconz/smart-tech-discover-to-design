@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF to Gherkin Converter</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PDF to Gherkin Converter</h1>
+      <p>Convert requirements documents from PDF to Gherkin feature files using ChatGPT</p>
+    </header>
+
+    <main>
+      <section class="input-section">
+        <div class="file-selection">
+          <h2>Step 1: Select PDF File</h2>
+          <button id="select-pdf-btn" class="btn primary">Select PDF</button>
+          <div id="selected-file" class="file-info hidden">
+            <p>Selected file: <span id="file-name">None</span></p>
+          </div>
+        </div>
+
+        <div class="api-key">
+          <h2>Step 2: Enter OpenAI API Key</h2>
+          <input type="password" id="api-key" placeholder="Enter your OpenAI API key" class="input-field">
+          <p class="hint">Your API key is saved locally for convenience</p>
+        </div>
+
+        <div class="process">
+          <h2>Step 3: Process PDF</h2>
+          <button id="process-btn" class="btn primary" disabled>Process PDF</button>
+        </div>
+      </section>
+
+      <section id="result-section" class="result-section hidden">
+        <h2>Generated Gherkin Feature Files</h2>
+        <div class="actions">
+          <button id="save-btn" class="btn secondary">Save Feature Files</button>
+          <button id="jira-btn" class="btn jira">Push to Jira</button>
+        </div>
+        <div class="gherkin-content">
+          <pre id="gherkin-output"></pre>
+        </div>
+      </section>
+
+      <section id="jira-section" class="jira-section hidden">
+        <h2>Jira Integration</h2>
+        <div class="jira-config">
+          <div class="form-group">
+            <label for="jira-url">Jira URL</label>
+            <input type="text" id="jira-url" placeholder="https://your-domain.atlassian.net" class="input-field">
+          </div>
+          <div class="form-group">
+            <label for="jira-username">Username / Email</label>
+            <input type="text" id="jira-username" placeholder="your.email@example.com" class="input-field">
+          </div>
+          <div class="form-group">
+            <label for="jira-api-token">API Token</label>
+            <input type="password" id="jira-api-token" placeholder="Your Jira API token" class="input-field">
+            <p class="hint">Create an API token in your Atlassian account settings</p>
+          </div>
+          <div class="form-actions">
+            <button id="save-credentials-btn" class="btn secondary">Save Credentials</button>
+            <button id="clear-credentials-btn" class="btn secondary">Clear Credentials</button>
+          </div>
+          <div class="form-actions">
+            <button id="test-jira-btn" class="btn secondary">Test Connection</button>
+            <button id="load-jira-data-btn" class="btn secondary" disabled>Load Jira Data</button>
+          </div>
+          
+          <div id="jira-data-section" class="hidden">
+            <div class="form-group">
+              <label for="jira-project">Project</label>
+              <select id="jira-project" class="select-field">
+                <option value="">Select a project</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="jira-epic-type">Epic Issue Type</label>
+              <select id="jira-epic-type" class="select-field">
+                <option value="Epic">Epic</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="jira-story-type">Story Issue Type</label>
+              <select id="jira-story-type" class="select-field">
+                <option value="Story">Story</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="jira-parent">Parent Initiative (Optional)</label>
+              <select id="jira-parent" class="select-field">
+                <option value="">None</option>
+              </select>
+              <p class="hint">Epics will be linked to the selected Initiative</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="jira-epic-name-field">Epic Name Field</label>
+              <select id="jira-epic-name-field" class="select-field">
+                <option value="customfield_10011">customfield_10011</option>
+              </select>
+              <p class="hint">Custom field for Epic Name in your Jira instance</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="jira-epic-link-field">Epic Link Field</label>
+              <select id="jira-epic-link-field" class="select-field">
+                <option value="customfield_10010">customfield_10010</option>
+              </select>
+              <p class="hint">Custom field for Epic Link in your Jira instance</p>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="create-jira-btn" class="btn primary">Create in Jira</button>
+          </div>
+        </div>
+        <div id="jira-result" class="jira-result hidden">
+          <h3>Jira Creation Results</h3>
+          <div id="jira-result-content"></div>
+        </div>
+      </section>
+
+      <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        <p id="loading-text">Processing PDF...</p>
+      </div>
+
+      <div id="status-message" class="status-message hidden"></div>
+    </main>
+
+    <footer>
+      <p>Powered by Electron and OpenAI</p>
+    </footer>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
