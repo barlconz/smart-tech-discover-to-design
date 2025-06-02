@@ -159,11 +159,11 @@ ipcMain.handle('process-pdf', async (event, filePath, apiKey) => {
       messages: [
         {
           role: "system",
-          content: "You are a requirements analyst who converts requirements documents into Gherkin feature files. Extract user stories and requirements from the provided text and convert them into well-structured Gherkin feature files with Feature, Background (if needed), and Scenario/Scenario Outline sections. Use proper Gherkin syntax with Given, When, Then, And, But keywords. Group related scenarios into features logically."
+          content: "You are a requirements analyst who converts requirements documents into Gherkin feature files. Extract user stories and requirements from the provided text and convert them into well-structured Gherkin feature files with Feature, Background (if needed), and Scenario/Scenario Outline sections. Use proper Gherkin syntax with Given, When, Then, And, But keywords. Group related scenarios into features logically. Ensure each Scenario follows the standard Gherkin format with a clear title and proper Given/When/Then steps. Each Feature should have a descriptive title and may include a brief description of the feature's purpose."
         },
         {
           role: "user",
-          content: `Convert the following requirements document into Gherkin feature files:\n\n${pdfText}`
+          content: `Convert the following requirements document into Gherkin feature files. Follow proper Gherkin syntax and ensure each Scenario has a descriptive title followed by Given/When/Then steps:\n\n${pdfText}`
         }
       ],
       temperature: 0.7,
@@ -190,7 +190,7 @@ ipcMain.handle('process-pdf', async (event, filePath, apiKey) => {
   }
 });
 
-// Parse Gherkin content to extract Features, Scenarios, and Given statements
+// Parse Gherkin content to extract Features and Scenarios in Gherkin format
 function parseGherkinContent(gherkinContent) {
   try {
     // First, split the content into feature blocks
@@ -212,39 +212,24 @@ function parseGherkinContent(gherkinContent) {
         .slice(1) // Skip the feature description part
         .map(block => `Scenario: ${block.trim()}`);
       
-      // Extract Given statements and their corresponding scenarios
-      const givenStatements = [];
-      const scenarioMap = {};
+      // Store scenarios with their names and content
+      const scenarios = [];
       
       for (const scenarioBlock of scenarioBlocks) {
         // Extract scenario name
         const scenarioNameMatch = scenarioBlock.match(/Scenario(?:\s+Outline)?:\s*([^\n]+)/);
         const scenarioName = scenarioNameMatch ? scenarioNameMatch[1].trim() : '';
         
-        // Extract Given statements from this scenario
-        const givenMatches = scenarioBlock.match(/Given\s+([^\n]+)/g) || [];
-        
-        for (const given of givenMatches) {
-          const givenText = given.replace(/^Given\s+/, '').trim();
-          givenStatements.push(givenText);
-          scenarioMap[givenText] = {
-            name: scenarioName,
-            content: scenarioBlock
-          };
-        }
-      }
-      
-      // If no scenarios found, try to extract Given statements directly
-      if (givenStatements.length === 0) {
-        const givenMatches = featureContent.match(/Given\s+([^\n]+)/g) || [];
-        givenStatements.push(...givenMatches.map(given => given.replace(/^Given\s+/, '').trim()));
+        scenarios.push({
+          name: scenarioName,
+          content: scenarioBlock
+        });
       }
       
       parsedFeatures.push({
         name: featureName,
         content: featureContent,
-        givenStatements,
-        scenarioMap
+        scenarios
       });
     }
     
@@ -696,13 +681,27 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
     const createdIssues = [];
     
     for (const feature of parsedFeatures) {
+      // Format the feature content with bold keywords for Epic description
+      let formattedFeature = feature.content;
+      
+      // Bold the Feature keyword and add space after keywords
+      formattedFeature = formattedFeature
+        .replace(/^(Feature:)/gm, '*$1* ')
+        .replace(/^(Scenario:)/gm, '*$1* ')
+        .replace(/^(Scenario Outline:)/gm, '*$1* ')
+        .replace(/^(\s*)(Given)/gm, '$1*$2* ')
+        .replace(/^(\s*)(When)/gm, '$1*$2* ')
+        .replace(/^(\s*)(Then)/gm, '$1*$2* ')
+        .replace(/^(\s*)(And)/gm, '$1*$2* ')
+        .replace(/^(\s*)(But)/gm, '$1*$2* ');
+      
       // Create Epic for the Feature
       const epicFields = {
         project: {
           key: projectKey
         },
         summary: feature.name,
-        description: feature.content,
+        description: formattedFeature,
         issuetype: {
           name: epicType
         }
@@ -714,8 +713,9 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
         epicFields[epicNameField] = feature.name;
       }
       
-      // Add Epic Description field with all Feature details
-      epicFields['customfield_11037'] = feature.content;
+      
+      // Add Epic Description field with formatted Feature details
+      epicFields['customfield_11037'] = formattedFeature;
       
       const epicIssue = await jira.addNewIssue({
         fields: epicFields
@@ -728,44 +728,32 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
         url: `${url}/browse/${epicIssue.key}`
       });
       
-      // Link Epic to parent if specified
-      if (parentIssueKey) {
-        try {
-          await jira.issueLink({
-            type: {
-              name: 'Relates' // This link type may vary in your Jira instance
-            },
-            inwardIssue: {
-              key: parentIssueKey
-            },
-            outwardIssue: {
-              key: epicIssue.key
-            }
-          });
-        } catch (linkError) {
-          console.error(`Error linking Epic ${epicIssue.key} to parent ${parentIssueKey}:`, linkError);
-        }
-      }
+      // No need to link Epic to parent after creation as we set the parent directly in the Epic fields
       
-      // Create Stories for each Given statement
-      for (const givenStatement of feature.givenStatements) {
+      // Create Stories for each Scenario
+      for (const scenario of feature.scenarios) {
         try {
-          // Get the scenario for this Given statement if available
-          const scenario = feature.scenarioMap && feature.scenarioMap[givenStatement];
+          // Format the scenario in proper Gherkin style with bold keywords and proper indentation
+          let formattedScenario = scenario.content;
           
-          // Create description with scenario content if available
-          let description;
-          if (scenario) {
-            description = `From Feature: ${feature.name}\n\n${scenario.content}`;
-          } else {
-            description = `From Feature: ${feature.name}\n\nGiven ${givenStatement}`;
-          }
+          // Bold the Gherkin keywords and add space after keywords
+          formattedScenario = formattedScenario
+            .replace(/^(Scenario:)/gm, '*$1* ')
+            .replace(/^(Scenario Outline:)/gm, '*$1* ')
+            .replace(/^(\s*)(Given)/gm, '$1*$2* ')
+            .replace(/^(\s*)(When)/gm, '$1*$2* ')
+            .replace(/^(\s*)(Then)/gm, '$1*$2* ')
+            .replace(/^(\s*)(And)/gm, '$1*$2* ')
+            .replace(/^(\s*)(But)/gm, '$1*$2* ');
+          
+          // Create description with scenario content
+          const description = `From *Feature*: ${feature.name}\n\n${formattedScenario}`;
           
           const storyFields = {
             project: {
               key: projectKey
             },
-            summary: givenStatement,
+            summary: scenario.name,
             description: description,
             issuetype: {
               name: storyType
@@ -773,11 +761,7 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
           };
           
           // Add Scenario information to the Story field (field ID 10577)
-          if (scenario) {
-            storyFields['customfield_10577'] = scenario.content;
-          } else {
-            storyFields['customfield_10577'] = `Given ${givenStatement}`;
-          }
+          storyFields['customfield_10577'] = formattedScenario;
           
           // Add Epic Link field if configured
           if (epicLinkField) {
@@ -791,12 +775,12 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
           createdIssues.push({
             key: storyIssue.key,
             type: 'story',
-            summary: givenStatement,
+            summary: scenario.name,
             epicKey: epicIssue.key,
             url: `${url}/browse/${storyIssue.key}`
           });
         } catch (storyError) {
-          console.error(`Error creating Story for "${givenStatement}":`, storyError);
+          console.error(`Error creating Story for scenario "${scenario.name}":`, storyError);
         }
       }
     }
