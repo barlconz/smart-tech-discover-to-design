@@ -198,6 +198,8 @@ function parseGherkinContent(gherkinContent) {
       .filter(block => block.trim().length > 0)
       .map(block => `Feature:${block.trim()}`);
     
+    console.log('Feature blocks count:', featureBlocks.length);
+    
     const parsedFeatures = [];
     
     for (let i = 0; i < featureBlocks.length; i++) {
@@ -207,10 +209,25 @@ function parseGherkinContent(gherkinContent) {
       const featureNameMatch = featureContent.match(/Feature:\s*([^\n]+)/);
       const featureName = featureNameMatch ? featureNameMatch[1].trim() : `Feature_${i + 1}`;
       
-      // Extract Scenarios
-      const scenarioBlocks = featureContent.split(/\n\s*Scenario(?:\s+Outline)?:/)
+      console.log(`Processing feature: ${featureName}`);
+      
+      // Log the feature content for debugging
+      if (featureName.includes('Continuous Learning')) {
+        console.log('Feature content:', featureContent);
+      }
+      
+      // Extract Scenarios - improved regex to handle various formatting
+      const scenarioRegex = /\n\s*Scenario(?:\s+Outline)?(?:\s*):(?:\s*)/;
+      const scenarioBlocks = featureContent.split(scenarioRegex)
         .slice(1) // Skip the feature description part
         .map(block => `Scenario: ${block.trim()}`);
+      
+      console.log(`Found ${scenarioBlocks.length} scenarios in feature: ${featureName}`);
+      
+      // Log the scenario blocks for debugging
+      if (featureName.includes('Continuous Learning')) {
+        console.log('Scenario blocks:', scenarioBlocks);
+      }
       
       // Store scenarios with their names and content
       const scenarios = [];
@@ -674,8 +691,15 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
       strictSSL: true
     });
     
-    // Parse Gherkin content
-    const parsedFeatures = parseGherkinContent(gherkinContent);
+      // Parse Gherkin content
+      const parsedFeatures = parseGherkinContent(gherkinContent);
+      
+      // Log the parsed features and scenarios for debugging
+      console.log('Parsed Features:', parsedFeatures.map(f => ({
+        name: f.name,
+        scenarioCount: f.scenarios.length,
+        scenarios: f.scenarios.map(s => s.name)
+      })));
     
     // Create issues in Jira
     const createdIssues = [];
