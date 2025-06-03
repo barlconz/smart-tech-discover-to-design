@@ -707,6 +707,13 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
         }
       };
       
+      // Set parent issue if specified - this creates the Epic as a child of the Initiative
+      if (parentIssueKey) {
+        epicFields['parent'] = {
+          key: parentIssueKey
+        };
+      }
+      
       // Add Epic Name field if configured and if the issue type is Epic
       // Some Jira instances only allow Epic Name field to be set on Epic issue types
       if (epicNameField && epicType.toLowerCase() === 'epic') {
