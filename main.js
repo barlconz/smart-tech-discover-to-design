@@ -711,8 +711,8 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
       // Bold the Feature keyword and add space after keywords
       formattedFeature = formattedFeature
         .replace(/^(Feature:)/gm, '*$1* ')
-        .replace(/^(Scenario)(:)/gm, '*$1*$2 ')
-        .replace(/^(Scenario Outline)(:)/gm, '*$1*$2 ')
+        .replace(/^Scenario:/gm, '*Scenario:*')
+        .replace(/^Scenario Outline:/gm, '*Scenario Outline:*')
         .replace(/^(\s*)(Given)/gm, '$1*$2* ')
         .replace(/^(\s*)(When)/gm, '$1*$2* ')
         .replace(/^(\s*)(Then)/gm, '$1*$2* ')
@@ -769,8 +769,8 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
           
           // Bold the Gherkin keywords and add space after keywords
           formattedScenario = formattedScenario
-            .replace(/^(Scenario)(:)/gm, '*$1*$2 ')
-            .replace(/^(Scenario Outline)(:)/gm, '*$1*$2 ')
+            .replace(/^Scenario:/gm, '*Scenario:*')
+            .replace(/^Scenario Outline:/gm, '*Scenario Outline:*')
             .replace(/^(\s*)(Given)/gm, '$1*$2* ')
             .replace(/^(\s*)(When)/gm, '$1*$2* ')
             .replace(/^(\s*)(Then)/gm, '$1*$2* ')
