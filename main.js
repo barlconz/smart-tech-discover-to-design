@@ -462,7 +462,7 @@ ipcMain.handle('get-jira-fields', async (event, jiraConfig) => {
   }
 });
 
-// Search Jira issues
+// Search Jira issues - Only returns Level 3 items for the parent selector
 ipcMain.handle('search-jira-issues', async (event, { jiraConfig, projectKey }) => {
   try {
     // Create Jira client
@@ -474,165 +474,59 @@ ipcMain.handle('search-jira-issues', async (event, { jiraConfig, projectKey }) =
     const issueTypes = await jira.listIssueTypes();
     console.log('Available issue types:', issueTypes.map(t => t.name));
     
-    // Try multiple approaches to find Level 3 initiatives
+    // Find Level 3 issue types - these are typically called "Initiative" or similar
+    const level3Types = issueTypes.filter(type => 
+      type.name.toLowerCase().includes('initiative') || 
+      type.name.toLowerCase().includes('theme') ||
+      type.name.toLowerCase().includes('program') ||
+      type.name.toLowerCase().includes('level 3') ||
+      type.name.toLowerCase().includes('l3')
+    );
     
-    // First try: Search for any high-level issues in the project
-    try {
-      // Get all issues in the project to see what's available
-      const allIssuesResult = await jira.searchJira(`project = ${projectKey} ORDER BY created DESC`, {
+    console.log('Potential Level 3 issue types:', level3Types.map(t => t.name));
+    
+    if (level3Types.length > 0) {
+      // Build JQL to search for all potential Level 3 issue types
+      const typeClause = level3Types
+        .map(type => `issuetype = "${type.name}"`)
+        .join(' OR ');
+      
+      const jql = `project = ${projectKey} AND (${typeClause}) ORDER BY created DESC`;
+      console.log('JQL query:', jql);
+      
+      const result = await jira.searchJira(jql, {
         maxResults: 100,
         fields: ['key', 'summary', 'issuetype', 'parent']
       });
       
-      console.log(`Found ${allIssuesResult.issues ? allIssuesResult.issues.length : 0} total issues in project`);
-      
-      if (allIssuesResult.issues && allIssuesResult.issues.length > 0) {
-        // Look for any issues that might be Level 3 initiatives
-        const potentialL3Issues = allIssuesResult.issues.filter(issue => {
-          const summary = issue.fields.summary.toLowerCase();
-          const issueType = issue.fields.issuetype.name.toLowerCase();
-          
-          // Check if this looks like a high-level issue
-          return (
-            issueType.includes('initiative') ||
-            issueType.includes('theme') ||
-            issueType.includes('epic') ||
-            issueType.includes('program') ||
-            summary.includes('initiative') ||
-            summary.includes('level 3') ||
-            summary.includes('l3') ||
-            // If it has no parent, it might be a top-level issue
-            !issue.fields.parent
-          );
-        });
-        
-        console.log(`Found ${potentialL3Issues.length} potential Level 3 issues`);
-        
-        if (potentialL3Issues.length > 0) {
-          return {
-            success: true,
-            issues: potentialL3Issues.map(issue => ({
-              id: issue.id,
-              key: issue.key,
-              summary: issue.fields.summary + " (Level 3)",
-              issueType: issue.fields.issuetype.name
-            }))
-          };
-        }
-      }
-    } catch (error) {
-      console.log('General search failed:', error.message);
-    }
-    
-    // Second try: Just return all issues as a last resort
-    try {
-      const result = await jira.searchJira(`project = ${projectKey} ORDER BY created DESC`, {
-        maxResults: 20,
-        fields: ['key', 'summary', 'issuetype']
-      });
+      console.log(`Found ${result.issues ? result.issues.length : 0} Level 3 issues in project`);
       
       if (result.issues && result.issues.length > 0) {
-        console.log('Returning all issues as Level 3 candidates');
         return {
           success: true,
           issues: result.issues.map(issue => ({
-            id: issue.id,
-            key: issue.key,
-            summary: issue.fields.summary + " (Level 3 Candidate)",
-            issueType: issue.fields.issuetype.name
-          }))
-        };
-      }
-    } catch (error) {
-      console.log('Fallback search failed:', error.message);
-    }
-    
-    // Return empty list if nothing found
-    console.log('No issues found, returning empty list');
-    return {
-      success: true,
-      issues: []
-    };
-  } catch (error) {
-    // If the search fails, try a fallback search
-    try {
-      const jira = createJiraClient(jiraConfig);
-      
-      // Get all issue types to find the Epic type or similar
-      const issueTypes = await jira.listIssueTypes();
-      
-      // Look for any issue types that might be high-level (Level 3)
-      const highLevelTypes = issueTypes
-        .filter(type => 
-          type.name.includes('Initiative') || 
-          type.name.includes('Theme') ||
-          type.name.includes('Program') ||
-          type.name.includes('Epic') ||
-          type.name.includes('Level') ||
-          !type.subtask // Non-subtask types could be high-level
-        )
-        .map(type => type.name);
-      
-      console.log('Potential high-level issue types:', highLevelTypes);
-      
-      // If no specific high-level types found, return all issue types
-      if (highLevelTypes.length === 0) {
-        console.log('No high-level types found, using all issue types');
-        return {
-          success: true,
-          issues: []
-        };
-      }
-      
-      // If we found high-level types, search for them
-      if (highLevelTypes.length > 0) {
-        const typeClause = highLevelTypes
-          .map(type => `issuetype = "${type}"`)
-          .join(' OR ');
-        
-        const result = await jira.searchJira(`project = ${projectKey} AND (${typeClause}) ORDER BY created DESC`, {
-          maxResults: 100,
-          fields: ['key', 'summary', 'issuetype']
-        });
-        
-        // Filter the results to only include issues that are likely Level 3 initiatives
-        const filteredIssues = result.issues.filter(issue => {
-          const summary = issue.fields.summary.toLowerCase();
-          const issueType = issue.fields.issuetype.name.toLowerCase();
-          
-          return (
-            issueType.includes('initiative') ||
-            issueType.includes('theme') ||
-            issueType.includes('program') ||
-            summary.includes('level 3') ||
-            summary.includes('l3') ||
-            summary.includes('initiative')
-          );
-        });
-        
-        return {
-          success: true,
-          issues: filteredIssues.map(issue => ({
             id: issue.id,
             key: issue.key,
             summary: issue.fields.summary + " (Level 3)",
             issueType: issue.fields.issuetype.name
           }))
         };
-      } else {
-        // If no high-level types found, just return an empty list
-        return {
-          success: true,
-          issues: []
-        };
       }
-    } catch (fallbackError) {
-      console.error('Error in fallback search:', fallbackError);
-      return {
-        success: false,
-        error: error.message
-      };
     }
+    
+    // If no Level 3 types found or no issues of those types exist, return empty list
+    console.log('No Level 3 issues found, returning empty list');
+    
+    return {
+      success: true,
+      issues: []
+    };
+  } catch (error) {
+    console.error('Error searching for Level 3 issues:', error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 });
 
