@@ -1,8 +1,7 @@
 // DOM Elements
-const selectPdfBtn = document.getElementById('select-pdf-btn');
+const selectFolderBtn = document.getElementById('select-folder-btn');
 const selectedFileDiv = document.getElementById('selected-file');
-const fileNameSpan = document.getElementById('file-name');
-const apiKeyInput = document.getElementById('api-key');
+const folderNameSpan = document.getElementById('folder-name');
 const processBtn = document.getElementById('process-btn');
 const resultSection = document.getElementById('result-section');
 const gherkinOutput = document.getElementById('gherkin-output');
@@ -15,11 +14,7 @@ const jiraApiTokenInput = document.getElementById('jira-api-token');
 const saveCredentialsBtn = document.getElementById('save-credentials-btn');
 const clearCredentialsBtn = document.getElementById('clear-credentials-btn');
 const jiraProjectSelect = document.getElementById('jira-project');
-const jiraEpicTypeSelect = document.getElementById('jira-epic-type');
-const jiraStoryTypeSelect = document.getElementById('jira-story-type');
 const jiraParentSelect = document.getElementById('jira-parent');
-const jiraEpicNameFieldSelect = document.getElementById('jira-epic-name-field');
-const jiraEpicLinkFieldSelect = document.getElementById('jira-epic-link-field');
 const testJiraBtn = document.getElementById('test-jira-btn');
 const loadJiraDataBtn = document.getElementById('load-jira-data-btn');
 const jiraDataSection = document.getElementById('jira-data-section');
@@ -31,8 +26,9 @@ const loadingText = document.getElementById('loading-text');
 const statusMessage = document.getElementById('status-message');
 
 // State variables
-let selectedFilePath = null;
+let selectedFolderPath = null;
 let gherkinContent = null;
+let selectedFolderName = null;
 
 // Helper functions
 function showLoading(message) {
@@ -56,83 +52,56 @@ function showStatus(message, isError = false) {
 }
 
 function validateInputs() {
-  const apiKey = apiKeyInput.value.trim();
-  processBtn.disabled = !selectedFilePath || !apiKey;
+  processBtn.disabled = !selectedFolderPath;
 }
 
 // Event listeners
-selectPdfBtn.addEventListener('click', async () => {
+selectFolderBtn.addEventListener('click', async () => {
   try {
-    const result = await window.api.selectPdf();
+    const result = await window.api.selectFeatureFolder();
     
     if (result.success) {
-      selectedFilePath = result.filePath;
-      fileNameSpan.textContent = result.fileName;
+      selectedFolderPath = result.folderPath;
+      selectedFolderName = result.folderName;
+      folderNameSpan.textContent = result.folderName;
       selectedFileDiv.classList.remove('hidden');
       validateInputs();
     }
   } catch (error) {
-    showStatus(`Error selecting PDF: ${error.message}`, true);
+    showStatus(`Error selecting folder: ${error.message}`, true);
   }
 });
 
-// Load saved API key when the page loads
+// Initialize when the page loads
 window.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const result = await window.api.loadApiKey();
-    if (result.success && result.apiKey) {
-      apiKeyInput.value = result.apiKey;
-      validateInputs();
-    }
-  } catch (error) {
-    console.error('Error loading API key:', error);
-  }
-});
-
-apiKeyInput.addEventListener('input', validateInputs);
-
-// Save API key when it changes
-apiKeyInput.addEventListener('change', async () => {
-  const apiKey = apiKeyInput.value.trim();
-  if (apiKey) {
-    try {
-      await window.api.saveApiKey(apiKey);
-    } catch (error) {
-      console.error('Error saving API key:', error);
-    }
-  }
+  validateInputs();
 });
 
 processBtn.addEventListener('click', async () => {
-  if (!selectedFilePath) {
-    showStatus('Please select a PDF file first', true);
-    return;
-  }
-  
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
-    showStatus('Please enter your OpenAI API key', true);
+  if (!selectedFolderPath) {
+    showStatus('Please select a folder with feature files first', true);
     return;
   }
   
   try {
-    showLoading('Processing PDF with ChatGPT...');
+    showLoading('Processing feature files...');
     
-    const result = await window.api.processPdf(selectedFilePath, apiKey);
+    const result = await window.api.processFeatureFolder(selectedFolderPath);
     
     hideLoading();
     
     if (result.success) {
       gherkinContent = result.gherkinContent;
+      selectedFolderName = result.folderName;
       gherkinOutput.textContent = gherkinContent;
       resultSection.classList.remove('hidden');
-      showStatus('PDF successfully processed!');
+      showStatus(`Successfully processed ${result.featureFiles.length} feature files!`);
     } else {
-      showStatus(`Error processing PDF: ${result.error}`, true);
+      showStatus(`Error processing feature files: ${result.error}`, true);
     }
   } catch (error) {
     hideLoading();
-    showStatus(`Error processing PDF: ${error.message}`, true);
+    showStatus(`Error processing feature files: ${error.message}`, true);
   }
 });
 
@@ -280,16 +249,8 @@ loadJiraDataBtn.addEventListener('click', async () => {
       throw new Error(issueTypesResult.error || 'Failed to load Jira issue types');
     }
     
-    // Load custom fields
-    const fieldsResult = await window.api.getJiraFields(jiraConfig);
-    if (!fieldsResult.success) {
-      throw new Error(fieldsResult.error || 'Failed to load Jira fields');
-    }
-    
     // Populate dropdowns
     populateProjectsDropdown(projectsResult.projects);
-    populateIssueTypesDropdowns(issueTypesResult.issueTypes);
-    populateCustomFieldsDropdowns(fieldsResult.fields);
     
     // Show the data section
     jiraDataSection.classList.remove('hidden');
@@ -329,8 +290,6 @@ async function handleProjectChange() {
   if (!projectKey) {
     // Clear dropdowns if no project selected
     jiraParentSelect.innerHTML = '<option value="">None</option>';
-    jiraEpicTypeSelect.innerHTML = '<option value="Epic">Epic</option>';
-    jiraStoryTypeSelect.innerHTML = '<option value="Story">Story</option>';
     return;
   }
   
@@ -339,15 +298,6 @@ async function handleProjectChange() {
     
     const jiraConfig = getJiraConfig();
     
-    // Load project-specific issue types
-    const issueTypesResult = await window.api.getProjectIssueTypes(jiraConfig, projectKey);
-    if (!issueTypesResult.success) {
-      throw new Error(issueTypesResult.error || 'Failed to load project issue types');
-    }
-    
-    // Populate issue type dropdowns with project-specific types
-    populateProjectIssueTypesDropdowns(issueTypesResult.issueTypes);
-    
     // Load issues for parent selection
     await loadProjectIssues(projectKey);
     
@@ -355,209 +305,6 @@ async function handleProjectChange() {
   } catch (error) {
     hideLoading();
     showStatus(`Error loading project data: ${error.message}`, true);
-  }
-}
-
-// Helper function to populate issue types dropdowns with all issue types
-function populateIssueTypesDropdowns(issueTypes) {
-  // Clear existing options
-  jiraEpicTypeSelect.innerHTML = '';
-  jiraStoryTypeSelect.innerHTML = '';
-  
-  // Filter for non-subtask issue types
-  const regularIssueTypes = issueTypes.filter(type => !type.subtask);
-  
-  // Add issue types
-  regularIssueTypes.forEach(type => {
-    // Add to Epic type dropdown
-    const epicOption = document.createElement('option');
-    epicOption.value = type.name;
-    epicOption.textContent = type.name;
-    if (type.name === 'Epic') {
-      epicOption.selected = true;
-    }
-    jiraEpicTypeSelect.appendChild(epicOption);
-    
-    // Add to Story type dropdown
-    const storyOption = document.createElement('option');
-    storyOption.value = type.name;
-    storyOption.textContent = type.name;
-    if (type.name === 'Story') {
-      storyOption.selected = true;
-    }
-    jiraStoryTypeSelect.appendChild(storyOption);
-  });
-  
-  // Add event listeners for issue type changes
-  jiraEpicTypeSelect.addEventListener('change', handleEpicTypeChange);
-  jiraStoryTypeSelect.addEventListener('change', handleStoryTypeChange);
-}
-
-// Helper function to populate issue types dropdowns with project-specific issue types
-function populateProjectIssueTypesDropdowns(issueTypes) {
-  // Clear existing options
-  jiraEpicTypeSelect.innerHTML = '';
-  jiraStoryTypeSelect.innerHTML = '';
-  
-  // Filter for non-subtask issue types
-  const regularIssueTypes = issueTypes.filter(type => !type.subtask);
-  
-  // Add issue types
-  regularIssueTypes.forEach(type => {
-    // Add to Epic type dropdown
-    const epicOption = document.createElement('option');
-    epicOption.value = type.name;
-    epicOption.textContent = type.name;
-    epicOption.dataset.id = type.id; // Store the ID for field lookup
-    if (type.name === 'Epic') {
-      epicOption.selected = true;
-    }
-    jiraEpicTypeSelect.appendChild(epicOption);
-    
-    // Add to Story type dropdown
-    const storyOption = document.createElement('option');
-    storyOption.value = type.name;
-    storyOption.textContent = type.name;
-    storyOption.dataset.id = type.id; // Store the ID for field lookup
-    if (type.name === 'Story') {
-      storyOption.selected = true;
-    }
-    jiraStoryTypeSelect.appendChild(storyOption);
-  });
-  
-  // Trigger field loading for the selected issue types
-  handleEpicTypeChange();
-  handleStoryTypeChange();
-}
-
-// Handle Epic type selection change
-async function handleEpicTypeChange() {
-  const projectKey = jiraProjectSelect.value;
-  if (!projectKey) return;
-  
-  const selectedOption = jiraEpicTypeSelect.options[jiraEpicTypeSelect.selectedIndex];
-  const issueTypeId = selectedOption.dataset.id;
-  if (!issueTypeId) return;
-  
-  try {
-    showLoading('Loading Epic type fields...');
-    
-    const jiraConfig = getJiraConfig();
-    const result = await window.api.getIssueTypeFields(jiraConfig, projectKey, issueTypeId);
-    
-    if (result.success) {
-      // Find Epic Name field if it exists for this issue type
-      const epicNameFields = result.fields.filter(field => 
-        field.name.toLowerCase().includes('epic') && 
-        field.name.toLowerCase().includes('name')
-      );
-      
-      if (epicNameFields.length > 0) {
-        // Update Epic Name field dropdown
-        jiraEpicNameFieldSelect.innerHTML = '';
-        epicNameFields.forEach(field => {
-          const option = document.createElement('option');
-          option.value = field.id;
-          option.textContent = `${field.name} (${field.id})`;
-          jiraEpicNameFieldSelect.appendChild(option);
-        });
-      }
-    }
-    
-    hideLoading();
-  } catch (error) {
-    hideLoading();
-    console.error('Error loading Epic type fields:', error);
-  }
-}
-
-// Handle Story type selection change
-async function handleStoryTypeChange() {
-  const projectKey = jiraProjectSelect.value;
-  if (!projectKey) return;
-  
-  const selectedOption = jiraStoryTypeSelect.options[jiraStoryTypeSelect.selectedIndex];
-  const issueTypeId = selectedOption.dataset.id;
-  if (!issueTypeId) return;
-  
-  try {
-    showLoading('Loading Story type fields...');
-    
-    const jiraConfig = getJiraConfig();
-    const result = await window.api.getIssueTypeFields(jiraConfig, projectKey, issueTypeId);
-    
-    if (result.success) {
-      // Find Epic Link field if it exists for this issue type
-      const epicLinkFields = result.fields.filter(field => 
-        field.name.toLowerCase().includes('epic') && 
-        field.name.toLowerCase().includes('link')
-      );
-      
-      if (epicLinkFields.length > 0) {
-        // Update Epic Link field dropdown
-        jiraEpicLinkFieldSelect.innerHTML = '';
-        epicLinkFields.forEach(field => {
-          const option = document.createElement('option');
-          option.value = field.id;
-          option.textContent = `${field.name} (${field.id})`;
-          jiraEpicLinkFieldSelect.appendChild(option);
-        });
-      }
-    }
-    
-    hideLoading();
-  } catch (error) {
-    hideLoading();
-    console.error('Error loading Story type fields:', error);
-  }
-}
-
-// Helper function to populate custom fields dropdowns
-function populateCustomFieldsDropdowns(fields) {
-  // Clear existing options
-  jiraEpicNameFieldSelect.innerHTML = '';
-  jiraEpicLinkFieldSelect.innerHTML = '';
-  
-  // Add fields that might be Epic Name fields
-  const epicNameFields = fields.filter(field => 
-    field.name.toLowerCase().includes('epic') && 
-    field.name.toLowerCase().includes('name')
-  );
-  
-  if (epicNameFields.length > 0) {
-    epicNameFields.forEach(field => {
-      const option = document.createElement('option');
-      option.value = field.id;
-      option.textContent = `${field.name} (${field.id})`;
-      jiraEpicNameFieldSelect.appendChild(option);
-    });
-  } else {
-    // Add default option
-    const option = document.createElement('option');
-    option.value = 'customfield_10011';
-    option.textContent = 'customfield_10011 (default)';
-    jiraEpicNameFieldSelect.appendChild(option);
-  }
-  
-  // Add fields that might be Epic Link fields
-  const epicLinkFields = fields.filter(field => 
-    field.name.toLowerCase().includes('epic') && 
-    field.name.toLowerCase().includes('link')
-  );
-  
-  if (epicLinkFields.length > 0) {
-    epicLinkFields.forEach(field => {
-      const option = document.createElement('option');
-      option.value = field.id;
-      option.textContent = `${field.name} (${field.id})`;
-      jiraEpicLinkFieldSelect.appendChild(option);
-    });
-  } else {
-    // Add default option
-    const option = document.createElement('option');
-    option.value = 'customfield_10010';
-    option.textContent = 'customfield_10010 (default)';
-    jiraEpicLinkFieldSelect.appendChild(option);
   }
 }
 
@@ -607,7 +354,7 @@ createJiraBtn.addEventListener('click', async () => {
   try {
     showLoading('Creating Jira issues...');
     
-    const result = await window.api.createJiraIssues(gherkinContent, jiraConfig);
+    const result = await window.api.createJiraIssues(gherkinContent, { ...jiraConfig, folderName: selectedFolderName });
     
     hideLoading();
     
@@ -631,10 +378,12 @@ function getJiraConfig() {
     apiToken: jiraApiTokenInput.value.trim(),
     projectKey: jiraProjectSelect.value.trim(),
     parentIssueKey: jiraParentSelect.value.trim(),
-    epicNameField: jiraEpicNameFieldSelect.value.trim() || 'customfield_10011',
-    epicLinkField: jiraEpicLinkFieldSelect.value.trim() || 'customfield_10010',
-    epicType: jiraEpicTypeSelect.value.trim() || 'Epic',
-    storyType: jiraStoryTypeSelect.value.trim() || 'Story'
+    epicNameField: '', // No Epic Name field
+    epicLinkField: '', // No Epic Link field
+    storyField: 'customfield_10577', // Use custom field 10577 for Scenario content
+    epicType: 'Epic', // Default Epic type
+    featureType: 'Feature', // Default Feature type
+    storyType: 'Story' // Default Story type
   };
 }
 
@@ -663,6 +412,7 @@ function displayJiraResults(issues, jiraUrl) {
   
   // Group issues by type
   const epics = issues.filter(issue => issue.type === 'epic');
+  const features = issues.filter(issue => issue.type === 'feature');
   const stories = issues.filter(issue => issue.type === 'story');
   
   // Create HTML for each issue
@@ -671,24 +421,40 @@ function displayJiraResults(issues, jiraUrl) {
     epicElement.className = 'jira-item epic';
     epicElement.innerHTML = `
       <div class="jira-item-title">
-        <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Feature)
+        <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Epic)
       </div>
       <a href="${epic.url}" class="jira-item-link" target="_blank">View in Jira</a>
     `;
     jiraResultContent.appendChild(epicElement);
     
-    // Add related stories
-    const epicStories = stories.filter(story => story.epicKey === epic.key);
-    for (const story of epicStories) {
-      const storyElement = document.createElement('div');
-      storyElement.className = 'jira-item story';
-      storyElement.innerHTML = `
+    // Add related features
+    const epicFeatures = features.filter(feature => feature.epicKey === epic.key);
+    for (const feature of epicFeatures) {
+      const featureElement = document.createElement('div');
+      featureElement.className = 'jira-item feature';
+      featureElement.style.marginLeft = '20px';
+      featureElement.innerHTML = `
         <div class="jira-item-title">
-          <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
+          <span class="jira-item-key">${feature.key}</span>: ${feature.summary} (Feature)
         </div>
-        <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
+        <a href="${feature.url}" class="jira-item-link" target="_blank">View in Jira</a>
       `;
-      jiraResultContent.appendChild(storyElement);
+      jiraResultContent.appendChild(featureElement);
+      
+      // Add related stories
+      const featureStories = stories.filter(story => story.featureKey === feature.key);
+      for (const story of featureStories) {
+        const storyElement = document.createElement('div');
+        storyElement.className = 'jira-item story';
+        storyElement.style.marginLeft = '40px';
+        storyElement.innerHTML = `
+          <div class="jira-item-title">
+            <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
+          </div>
+          <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
+        `;
+        jiraResultContent.appendChild(storyElement);
+      }
     }
   }
   

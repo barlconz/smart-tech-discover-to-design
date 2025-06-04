@@ -120,11 +120,10 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Handle PDF file selection
-ipcMain.handle('select-pdf', async () => {
+// Handle folder selection for feature files
+ipcMain.handle('select-feature-folder', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+    properties: ['openDirectory']
   });
   
   if (canceled) {
@@ -133,56 +132,50 @@ ipcMain.handle('select-pdf', async () => {
   
   return { 
     success: true, 
-    filePath: filePaths[0],
-    fileName: path.basename(filePaths[0])
+    folderPath: filePaths[0],
+    folderName: path.basename(filePaths[0])
   };
 });
 
-// Handle PDF processing and ChatGPT conversion
-ipcMain.handle('process-pdf', async (event, filePath, apiKey) => {
+// Handle processing of feature files from a folder
+ipcMain.handle('process-feature-folder', async (event, folderPath) => {
   try {
-    // Read the PDF file
-    const dataBuffer = fs.readFileSync(filePath);
+    // Get all .feature files in the folder
+    const files = fs.readdirSync(folderPath).filter(file => file.endsWith('.feature'));
     
-    // Extract text from PDF
-    const pdfData = await pdfParse(dataBuffer);
-    const pdfText = pdfData.text;
+    if (files.length === 0) {
+      return {
+        success: false,
+        error: 'No .feature files found in the selected folder'
+      };
+    }
     
-    // Initialize OpenAI with the provided API key
-    const openai = new OpenAI({
-      apiKey: apiKey
-    });
+    // Read and concatenate all feature files
+    let gherkinContent = '';
+    const featureFiles = [];
     
-    // Send the PDF content to ChatGPT for conversion to Gherkin format
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: "You are a requirements analyst who converts requirements documents into Gherkin feature files. Extract user stories and requirements from the provided text and convert them into well-structured Gherkin feature files with Feature, Background (if needed), and Scenario/Scenario Outline sections. Use proper Gherkin syntax with Given, When, Then, And, But keywords. Group related scenarios into features logically. Ensure each Scenario follows the standard Gherkin format with a clear title and proper Given/When/Then steps. Each Feature should have a descriptive title and may include a brief description of the feature's purpose."
-        },
-        {
-          role: "user",
-          content: `Convert the following requirements document into Gherkin feature files. Follow proper Gherkin syntax and ensure each Scenario has a descriptive title followed by Given/When/Then steps:\n\n${pdfText}`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 4000
-    });
+    for (const file of files) {
+      const filePath = path.join(folderPath, file);
+      const content = fs.readFileSync(filePath, 'utf8');
+      gherkinContent += content + '\n\n';
+      featureFiles.push({
+        name: file,
+        path: filePath,
+        content: content
+      });
+    }
     
-    // Extract the Gherkin content from the response
-    let gherkinContent = response.choices[0].message.content;
-    
-    // Remove all markdown code block markers
-    gherkinContent = gherkinContent.replace(/```gherkin\s*/g, '');
-    gherkinContent = gherkinContent.replace(/```\s*/g, '');
+    // Get the folder name for the Epic title
+    const folderName = path.basename(folderPath);
     
     return {
       success: true,
-      gherkinContent
+      gherkinContent,
+      featureFiles,
+      folderName
     };
   } catch (error) {
-    console.error('Error processing PDF:', error);
+    console.error('Error processing feature files:', error);
     return {
       success: false,
       error: error.message
@@ -440,38 +433,121 @@ ipcMain.handle('search-jira-issues', async (event, { jiraConfig, projectKey }) =
     // Create Jira client
     const jira = createJiraClient(jiraConfig);
     
-    // Search for Initiative issues in the project
-    const result = await jira.searchJira(`project = ${projectKey} AND issuetype = Initiative ORDER BY created DESC`, {
-      maxResults: 100,
-      fields: ['key', 'summary', 'issuetype']
-    });
+    console.log(`Searching for Level 3 Initiatives in project ${projectKey}`);
     
+    // Get all issue types to understand what's available
+    const issueTypes = await jira.listIssueTypes();
+    console.log('Available issue types:', issueTypes.map(t => t.name));
+    
+    // Try multiple approaches to find Level 3 initiatives
+    
+    // First try: Search for any high-level issues in the project
+    try {
+      // Get all issues in the project to see what's available
+      const allIssuesResult = await jira.searchJira(`project = ${projectKey} ORDER BY created DESC`, {
+        maxResults: 100,
+        fields: ['key', 'summary', 'issuetype', 'parent']
+      });
+      
+      console.log(`Found ${allIssuesResult.issues ? allIssuesResult.issues.length : 0} total issues in project`);
+      
+      if (allIssuesResult.issues && allIssuesResult.issues.length > 0) {
+        // Look for any issues that might be Level 3 initiatives
+        const potentialL3Issues = allIssuesResult.issues.filter(issue => {
+          const summary = issue.fields.summary.toLowerCase();
+          const issueType = issue.fields.issuetype.name.toLowerCase();
+          
+          // Check if this looks like a high-level issue
+          return (
+            issueType.includes('initiative') ||
+            issueType.includes('theme') ||
+            issueType.includes('epic') ||
+            issueType.includes('program') ||
+            summary.includes('initiative') ||
+            summary.includes('level 3') ||
+            summary.includes('l3') ||
+            // If it has no parent, it might be a top-level issue
+            !issue.fields.parent
+          );
+        });
+        
+        console.log(`Found ${potentialL3Issues.length} potential Level 3 issues`);
+        
+        if (potentialL3Issues.length > 0) {
+          return {
+            success: true,
+            issues: potentialL3Issues.map(issue => ({
+              id: issue.id,
+              key: issue.key,
+              summary: issue.fields.summary + " (Level 3)",
+              issueType: issue.fields.issuetype.name
+            }))
+          };
+        }
+      }
+    } catch (error) {
+      console.log('General search failed:', error.message);
+    }
+    
+    // Second try: Just return all issues as a last resort
+    try {
+      const result = await jira.searchJira(`project = ${projectKey} ORDER BY created DESC`, {
+        maxResults: 20,
+        fields: ['key', 'summary', 'issuetype']
+      });
+      
+      if (result.issues && result.issues.length > 0) {
+        console.log('Returning all issues as Level 3 candidates');
+        return {
+          success: true,
+          issues: result.issues.map(issue => ({
+            id: issue.id,
+            key: issue.key,
+            summary: issue.fields.summary + " (Level 3 Candidate)",
+            issueType: issue.fields.issuetype.name
+          }))
+        };
+      }
+    } catch (error) {
+      console.log('Fallback search failed:', error.message);
+    }
+    
+    // Return empty list if nothing found
+    console.log('No issues found, returning empty list');
     return {
       success: true,
-      issues: result.issues.map(issue => ({
-        id: issue.id,
-        key: issue.key,
-        summary: issue.fields.summary,
-        issueType: issue.fields.issuetype.name
-      }))
+      issues: []
     };
   } catch (error) {
-    // If the search fails (possibly because Initiative type doesn't exist), try a fallback search
+    // If the search fails, try a fallback search
     try {
       const jira = createJiraClient(jiraConfig);
       
-      // Get all issue types to find the highest level type
+      // Get all issue types to find the Epic type or similar
       const issueTypes = await jira.listIssueTypes();
       
-      // Look for Initiative, Epic, or other high-level issue types
+      // Look for any issue types that might be high-level (Level 3)
       const highLevelTypes = issueTypes
         .filter(type => 
           type.name.includes('Initiative') || 
-          type.name.includes('Epic') || 
           type.name.includes('Theme') ||
-          type.name.includes('Program')
+          type.name.includes('Program') ||
+          type.name.includes('Epic') ||
+          type.name.includes('Level') ||
+          !type.subtask // Non-subtask types could be high-level
         )
         .map(type => type.name);
+      
+      console.log('Potential high-level issue types:', highLevelTypes);
+      
+      // If no specific high-level types found, return all issue types
+      if (highLevelTypes.length === 0) {
+        console.log('No high-level types found, using all issue types');
+        return {
+          success: true,
+          issues: []
+        };
+      }
       
       // If we found high-level types, search for them
       if (highLevelTypes.length > 0) {
@@ -484,12 +560,27 @@ ipcMain.handle('search-jira-issues', async (event, { jiraConfig, projectKey }) =
           fields: ['key', 'summary', 'issuetype']
         });
         
+        // Filter the results to only include issues that are likely Level 3 initiatives
+        const filteredIssues = result.issues.filter(issue => {
+          const summary = issue.fields.summary.toLowerCase();
+          const issueType = issue.fields.issuetype.name.toLowerCase();
+          
+          return (
+            issueType.includes('initiative') ||
+            issueType.includes('theme') ||
+            issueType.includes('program') ||
+            summary.includes('level 3') ||
+            summary.includes('l3') ||
+            summary.includes('initiative')
+          );
+        });
+        
         return {
           success: true,
-          issues: result.issues.map(issue => ({
+          issues: filteredIssues.map(issue => ({
             id: issue.id,
             key: issue.key,
-            summary: issue.fields.summary,
+            summary: issue.fields.summary + " (Level 3)",
             issueType: issue.fields.issuetype.name
           }))
         };
@@ -667,19 +758,34 @@ ipcMain.handle('get-issue-type-fields', async (event, { jiraConfig, projectKey, 
 });
 
 // Create Jira issues from Gherkin content
-ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig }) => {
+ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig, folderName }) => {
   try {
     const { 
       url, 
       username, 
       apiToken, 
       projectKey, 
-      parentIssueKey,
+      parentIssueKey, // This is now the Initiative key (Level 3)
       epicNameField = 'customfield_10011',
       epicLinkField = 'customfield_10010',
-      epicType = 'Epic',
-      storyType = 'Story'
+      storyField = 'customfield_10577', // Custom field for Story scenario content
+      epicType = 'Epic', // Level 2
+      featureType = 'Feature', // Level 1
+      storyType = 'Story' // Level 0
     } = jiraConfig;
+    
+    console.log('Creating Jira issues with config:', {
+      url,
+      username: username ? '(provided)' : '(missing)',
+      apiToken: apiToken ? '(provided)' : '(missing)',
+      projectKey,
+      parentIssueKey,
+      epicNameField,
+      epicLinkField,
+      epicType,
+      featureType,
+      storyType
+    });
     
     // Create Jira client
     const jira = new JiraClient({
@@ -691,21 +797,108 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
       strictSSL: true
     });
     
-      // Parse Gherkin content
-      const parsedFeatures = parseGherkinContent(gherkinContent);
-      
-      // Log the parsed features and scenarios for debugging
-      console.log('Parsed Features:', parsedFeatures.map(f => ({
-        name: f.name,
-        scenarioCount: f.scenarios.length,
-        scenarios: f.scenarios.map(s => s.name)
-      })));
+    // Get available issue types for the project
+    console.log(`Getting available issue types for project ${projectKey}`);
+    const projectData = await jira.getProject(projectKey);
+    const projectIssueTypes = projectData.issueTypes || [];
+    console.log('Available issue types:', projectIssueTypes.map(t => t.name));
+    
+    // Use the specified Epic Work Type ID 10472
+    const availableEpicType = {
+      id: '10472',
+      name: 'Level 2 Epic'
+    };
+    
+    const availableFeatureType = projectIssueTypes.find(t => 
+      t.name.toLowerCase() === featureType.toLowerCase() || 
+      t.name.toLowerCase().includes('feature') ||
+      t.name.toLowerCase().includes('story')
+    );
+    
+    const availableStoryType = projectIssueTypes.find(t => 
+      t.name.toLowerCase() === storyType.toLowerCase() || 
+      t.name.toLowerCase().includes('story') ||
+      t.name.toLowerCase().includes('task') ||
+      t.name.toLowerCase().includes('sub-task')
+    );
+    
+    if (!availableEpicType) {
+      throw new Error(`Epic issue type "${epicType}" not found in project. Available types: ${projectIssueTypes.map(t => t.name).join(', ')}`);
+    }
+    
+    if (!availableFeatureType) {
+      throw new Error(`Feature issue type "${featureType}" not found in project. Available types: ${projectIssueTypes.map(t => t.name).join(', ')}`);
+    }
+    
+    if (!availableStoryType) {
+      throw new Error(`Story issue type "${storyType}" not found in project. Available types: ${projectIssueTypes.map(t => t.name).join(', ')}`);
+    }
+    
+    console.log('Using issue types:', {
+      epic: availableEpicType.name,
+      feature: availableFeatureType.name,
+      story: availableStoryType.name
+    });
+    
+    // Parse Gherkin content
+    const parsedFeatures = parseGherkinContent(gherkinContent);
+    
+    // Log the parsed features and scenarios for debugging
+    console.log('Parsed Features:', parsedFeatures.map(f => ({
+      name: f.name,
+      scenarioCount: f.scenarios.length,
+      scenarios: f.scenarios.map(s => s.name)
+    })));
     
     // Create issues in Jira
     const createdIssues = [];
     
+    // Convert folder name to Title Case for Epic name
+    const toTitleCase = (str) => {
+      return str.replace(/\w\S*/g, function(txt) {
+        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+      });
+    };
+    
+    // Use folder name as Epic name, or default if not provided
+    const epicName = folderName ? toTitleCase(folderName) : "Feature Files";
+    
+    // First, create an Epic (Level 2) under the Initiative (Level 3)
+    const epicFields = {
+      project: {
+        key: projectKey
+      },
+      summary: epicName,
+      issuetype: {
+        id: availableEpicType.id
+      }
+    };
+    
+    // Don't set Epic Name field as requested by user
+    // The field will be set automatically by Jira if needed
+    
+    // Link to parent Initiative if specified
+    if (parentIssueKey) {
+      epicFields.parent = {
+        key: parentIssueKey
+      };
+    }
+    
+    // Create the Epic
+    const epicIssue = await jira.addNewIssue({
+      fields: epicFields
+    });
+    
+      createdIssues.push({
+        key: epicIssue.key,
+        type: 'epic',
+        summary: epicName,
+        url: `${url}/browse/${epicIssue.key}`
+      });
+    
+    // Now create Features under the Epic
     for (const feature of parsedFeatures) {
-      // Format the feature content with bold keywords for Epic description
+      // Format the feature content with bold keywords for Feature description
       let formattedFeature = feature.content;
       
       // Bold the Feature keyword and add space after keywords
@@ -719,47 +912,37 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
         .replace(/^(\s*)(And)/gm, '$1*$2* ')
         .replace(/^(\s*)(But)/gm, '$1*$2* ');
       
-      // Create Epic for the Feature
-      const epicFields = {
+      // Create Feature issue
+      const featureFields = {
         project: {
           key: projectKey
         },
         summary: feature.name,
-        description: formattedFeature,
         issuetype: {
-          name: epicType
+          id: availableFeatureType.id
         }
       };
       
-      // Set parent issue if specified - this creates the Epic as a child of the Initiative
-      if (parentIssueKey) {
-        epicFields['parent'] = {
-          key: parentIssueKey
-        };
-      }
+      // Create a code block with Gherkin syntax for the Feature description
+      const gherkinCodeBlock = `{code:language=gherkin}\n${feature.content}\n{code}`;
+      featureFields.description = gherkinCodeBlock;
       
-      // Add Epic Name field if configured and if the issue type is Epic
-      // Some Jira instances only allow Epic Name field to be set on Epic issue types
-      if (epicNameField && epicType.toLowerCase() === 'epic') {
-        epicFields[epicNameField] = feature.name;
-      }
+      // Make Feature a child of the Epic
+      featureFields.parent = {
+        key: epicIssue.key
+      };
       
-      
-      // Add Epic Description field with formatted Feature details
-      epicFields['customfield_11037'] = formattedFeature;
-      
-      const epicIssue = await jira.addNewIssue({
-        fields: epicFields
+      const featureIssue = await jira.addNewIssue({
+        fields: featureFields
       });
       
       createdIssues.push({
-        key: epicIssue.key,
-        type: 'epic',
+        key: featureIssue.key,
+        type: 'feature',
         summary: feature.name,
-        url: `${url}/browse/${epicIssue.key}`
+        epicKey: epicIssue.key,
+        url: `${url}/browse/${featureIssue.key}`
       });
-      
-      // No need to link Epic to parent after creation as we set the parent directly in the Epic fields
       
       // Create Stories for each Scenario
       for (const scenario of feature.scenarios) {
@@ -777,26 +960,27 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
             .replace(/^(\s*)(And)/gm, '$1*$2* ')
             .replace(/^(\s*)(But)/gm, '$1*$2* ');
           
-          // Create description with scenario content
-          const description = `From *Feature*: ${feature.name}\n\n${formattedScenario}`;
-          
           const storyFields = {
             project: {
               key: projectKey
             },
             summary: scenario.name,
-            description: description,
             issuetype: {
-              name: storyType
+              id: availableStoryType.id
+            },
+            // Link to parent Feature
+            parent: {
+              key: featureIssue.key
             }
           };
           
-          // Add Scenario information to the Story field (field ID 10577)
-          storyFields['customfield_10577'] = formattedScenario;
+          // Create a code block with Gherkin syntax for the Story description
+          const scenarioGherkinCodeBlock = `{code:language=gherkin}\n${scenario.content}\n{code}`;
+          storyFields.description = scenarioGherkinCodeBlock;
           
-          // Add Epic Link field if configured
-          if (epicLinkField) {
-            storyFields[epicLinkField] = epicIssue.key;
+          // Only set the custom Story field if it's not 'description' (which is already set)
+          if (storyField && storyField !== 'description') {
+            storyFields[storyField] = scenarioGherkinCodeBlock;
           }
           
           const storyIssue = await jira.addNewIssue({
@@ -807,7 +991,7 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig 
             key: storyIssue.key,
             type: 'story',
             summary: scenario.name,
-            epicKey: epicIssue.key,
+            featureKey: featureIssue.key,
             url: `${url}/browse/${storyIssue.key}`
           });
         } catch (storyError) {
