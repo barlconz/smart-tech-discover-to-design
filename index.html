@@ -86,8 +86,19 @@
             <p class="hint">The Epic (Level 2) will be created under the selected Initiative, with Features and Stories under the Epic</p>
             </div>
           </div>
+          <div id="jira-preview-section" class="jira-preview-section hidden">
+            <h3>Preview Jira Items to Create</h3>
+            <p class="hint">Select the items you want to create in Jira. Uncheck items you don't want to create.</p>
+            <div id="jira-preview-content" class="jira-preview-content"></div>
+            <div class="preview-actions">
+              <button id="select-all-btn" class="btn secondary">Select All</button>
+              <button id="deselect-all-btn" class="btn secondary">Deselect All</button>
+            </div>
+          </div>
+          
           <div class="form-actions">
-            <button id="create-jira-btn" class="btn primary">Create in Jira</button>
+            <button id="preview-jira-btn" class="btn secondary">Preview Items</button>
+            <button id="create-jira-btn" class="btn primary">Create Selected in Jira</button>
           </div>
         </div>
         <div id="jira-result" class="jira-result hidden">

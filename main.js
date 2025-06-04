@@ -806,7 +806,8 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
       storyField = 'customfield_10577', // Custom field for Story scenario content
       epicType = 'Epic', // Level 2
       featureType = 'Feature', // Level 1
-      storyType = 'Story' // Level 0
+      storyType = 'Story', // Level 0
+      selectedItems = [] // New property for selected items
     } = jiraConfig;
     
     console.log('Creating Jira issues with config:', {
@@ -885,6 +886,10 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
       scenarios: f.scenarios.map(s => s.name)
     })));
     
+    // Check if we have selected items
+    const hasSelectedItems = Array.isArray(selectedItems) && selectedItems.length > 0;
+    console.log('Has selected items:', hasSelectedItems, 'Count:', selectedItems.length);
+    
     // Create issues in Jira
     const createdIssues = [];
     
@@ -898,41 +903,84 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
     // Use folder name as Epic name, or default if not provided
     const epicName = folderName ? toTitleCase(folderName) : "Feature Files";
     
-    // First, create an Epic (Level 2) under the Initiative (Level 3)
-    const epicFields = {
-      project: {
-        key: projectKey
-      },
-      summary: epicName,
-      issuetype: {
-        id: availableEpicType.id
-      }
-    };
+    // Generate a unique ID for tracking items
+    let idCounter = 1;
+    const epicId = `item-${idCounter++}`;
     
-    // Don't set Epic Name field as requested by user
-    // The field will be set automatically by Jira if needed
+    // Check if Epic is selected (or if we're not using selection)
+    const shouldCreateEpic = !hasSelectedItems || 
+      selectedItems.some(item => item.type === 'epic' && item.id === epicId);
     
-    // Link to parent Initiative if specified
-    if (parentIssueKey) {
-      epicFields.parent = {
-        key: parentIssueKey
+    let epicIssue = null;
+    
+    if (shouldCreateEpic) {
+      // First, create an Epic (Level 2) under the Initiative (Level 3)
+      const epicFields = {
+        project: {
+          key: projectKey
+        },
+        summary: epicName,
+        issuetype: {
+          id: availableEpicType.id
+        }
       };
-    }
-    
-    // Create the Epic
-    const epicIssue = await jira.addNewIssue({
-      fields: epicFields
-    });
-    
+      
+      // Don't set Epic Name field as requested by user
+      // The field will be set automatically by Jira if needed
+      
+      // Link to parent Initiative if specified
+      if (parentIssueKey) {
+        epicFields.parent = {
+          key: parentIssueKey
+        };
+      }
+      
+      // Create the Epic
+      epicIssue = await jira.addNewIssue({
+        fields: epicFields
+      });
+      
       createdIssues.push({
         key: epicIssue.key,
         type: 'epic',
         summary: epicName,
         url: `${url}/browse/${epicIssue.key}`
       });
+      
+      console.log('Created Epic:', epicIssue.key);
+    } else {
+      console.log('Skipping Epic creation (not selected)');
+    }
+    
+    // If Epic wasn't created and we need it for children, stop here
+    if (!epicIssue && hasSelectedItems) {
+      const hasChildrenSelected = selectedItems.some(item => 
+        (item.type === 'feature' || item.type === 'story') && 
+        item.parentId === epicId);
+      
+      if (hasChildrenSelected) {
+        throw new Error('Cannot create child items because their parent Epic was not selected');
+      }
+    }
     
     // Now create Features under the Epic
     for (const feature of parsedFeatures) {
+      // Generate a unique ID for this feature
+      const featureId = `item-${idCounter++}`;
+      
+      // Check if Feature is selected (or if we're not using selection)
+      const shouldCreateFeature = !hasSelectedItems || 
+        selectedItems.some(item => item.type === 'feature' && item.id === featureId);
+      
+      // Skip if not selected or if Epic wasn't created
+      if (!shouldCreateFeature || !epicIssue) {
+        console.log(`Skipping Feature "${feature.name}" (not selected or parent not created)`);
+        
+        // Increment counter for scenarios to maintain ID consistency
+        idCounter += feature.scenarios.length;
+        continue;
+      }
+      
       // Format the feature content with bold keywords for Feature description
       let formattedFeature = feature.content;
       
@@ -979,9 +1027,24 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
         url: `${url}/browse/${featureIssue.key}`
       });
       
+      console.log('Created Feature:', featureIssue.key);
+      
       // Create Stories for each Scenario
       for (const scenario of feature.scenarios) {
         try {
+          // Generate a unique ID for this story
+          const storyId = `item-${idCounter++}`;
+          
+          // Check if Story is selected (or if we're not using selection)
+          const shouldCreateStory = !hasSelectedItems || 
+            selectedItems.some(item => item.type === 'story' && item.id === storyId);
+          
+          // Skip if not selected
+          if (!shouldCreateStory) {
+            console.log(`Skipping Story "${scenario.name}" (not selected)`);
+            continue;
+          }
+          
           // Format the scenario in proper Gherkin style with bold keywords and proper indentation
           let formattedScenario = scenario.content;
           
@@ -1050,6 +1113,8 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
             featureKey: featureIssue.key,
             url: `${url}/browse/${storyIssue.key}`
           });
+          
+          console.log('Created Story:', storyIssue.key);
         } catch (storyError) {
           console.error(`Error creating Story for scenario "${scenario.name}":`, storyError);
         }

@@ -21,6 +21,11 @@ const jiraParentSelect = document.getElementById('jira-parent');
 const testJiraBtn = document.getElementById('test-jira-btn');
 const loadJiraDataBtn = document.getElementById('load-jira-data-btn');
 const jiraDataSection = document.getElementById('jira-data-section');
+const jiraPreviewSection = document.getElementById('jira-preview-section');
+const jiraPreviewContent = document.getElementById('jira-preview-content');
+const selectAllBtn = document.getElementById('select-all-btn');
+const deselectAllBtn = document.getElementById('deselect-all-btn');
+const previewJiraBtn = document.getElementById('preview-jira-btn');
 const createJiraBtn = document.getElementById('create-jira-btn');
 const jiraResult = document.getElementById('jira-result');
 const jiraResultContent = document.getElementById('jira-result-content');
@@ -32,6 +37,7 @@ const statusMessage = document.getElementById('status-message');
 let selectedFolderPath = null;
 let gherkinContent = null;
 let selectedFolderName = null;
+let previewedJiraItems = []; // Store the previewed Jira items
 
 // Helper functions
 function showLoading(message) {
@@ -200,6 +206,11 @@ jiraBtn.addEventListener('click', async () => {
   
   jiraSection.classList.remove('hidden');
   jiraResult.classList.add('hidden');
+  jiraPreviewSection.classList.add('hidden');
+  
+  // Hide create button until preview is done
+  createJiraBtn.classList.add('hidden');
+  previewJiraBtn.classList.remove('hidden');
   
   // Load saved credentials if available
   try {
@@ -399,10 +410,10 @@ async function loadProjectIssues(projectKey) {
   }
 }
 
-// Create Jira issues
-createJiraBtn.addEventListener('click', async () => {
+// Preview Jira issues before creation
+previewJiraBtn.addEventListener('click', async () => {
   if (!gherkinContent) {
-    showStatus('No Gherkin content to push to Jira', true);
+    showStatus('No Gherkin content to preview', true);
     return;
   }
   
@@ -413,9 +424,69 @@ createJiraBtn.addEventListener('click', async () => {
   }
   
   try {
-    showLoading('Creating Jira issues...');
+    showLoading('Generating preview of Jira issues...');
     
-    const result = await window.api.createJiraIssues(gherkinContent, { ...jiraConfig, folderName: selectedFolderName });
+    // Parse the Gherkin content to extract features and scenarios
+    const parsedFeatures = await parseGherkinContent(gherkinContent);
+    
+    // Generate preview items
+    previewedJiraItems = generatePreviewItems(parsedFeatures, jiraConfig, selectedFolderName);
+    
+    // Display preview items
+    displayPreviewItems(previewedJiraItems);
+    
+    hideLoading();
+    
+    // Show the preview section and create button
+    jiraPreviewSection.classList.remove('hidden');
+    createJiraBtn.classList.remove('hidden');
+    
+    // Scroll to preview section
+    jiraPreviewSection.scrollIntoView({ behavior: 'smooth' });
+    
+    showStatus(`Generated preview of ${previewedJiraItems.length} Jira issues`);
+  } catch (error) {
+    hideLoading();
+    showStatus(`Error generating preview: ${error.message}`, true);
+  }
+});
+
+// Create selected Jira issues
+createJiraBtn.addEventListener('click', async () => {
+  if (!gherkinContent || previewedJiraItems.length === 0) {
+    showStatus('No Jira items to create', true);
+    return;
+  }
+  
+  const jiraConfig = getJiraConfig();
+  
+  if (!validateJiraConfig(jiraConfig, ['url', 'username', 'apiToken', 'projectKey'])) {
+    return;
+  }
+  
+  // Get selected items
+  const selectedItems = previewedJiraItems.filter(item => item.selected);
+  
+  if (selectedItems.length === 0) {
+    showStatus('No items selected for creation', true);
+    return;
+  }
+  
+  try {
+    showLoading('Creating selected Jira issues...');
+    
+    // Create a modified config with selected items
+    const configWithSelection = {
+      ...jiraConfig,
+      folderName: selectedFolderName,
+      selectedItems: selectedItems.map(item => ({
+        id: item.id,
+        type: item.type,
+        parentId: item.parentId
+      }))
+    };
+    
+    const result = await window.api.createJiraIssues(gherkinContent, configWithSelection);
     
     hideLoading();
     
@@ -429,6 +500,40 @@ createJiraBtn.addEventListener('click', async () => {
     hideLoading();
     showStatus(`Error creating Jira issues: ${error.message}`, true);
   }
+});
+
+// Select all items
+selectAllBtn.addEventListener('click', () => {
+  const checkboxes = document.querySelectorAll('.preview-item-checkbox');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = true;
+    
+    // Update the state in previewedJiraItems
+    const itemId = checkbox.getAttribute('data-id');
+    const item = previewedJiraItems.find(item => item.id === itemId);
+    if (item) {
+      item.selected = true;
+    }
+  });
+  
+  showStatus('All items selected');
+});
+
+// Deselect all items
+deselectAllBtn.addEventListener('click', () => {
+  const checkboxes = document.querySelectorAll('.preview-item-checkbox');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = false;
+    
+    // Update the state in previewedJiraItems
+    const itemId = checkbox.getAttribute('data-id');
+    const item = previewedJiraItems.find(item => item.id === itemId);
+    if (item) {
+      item.selected = false;
+    }
+  });
+  
+  showStatus('All items deselected');
 });
 
 // Helper function to get Jira configuration from form
@@ -519,6 +624,184 @@ function displayJiraResults(issues, jiraUrl) {
     }
   }
   
-  // Scroll to results
+// Scroll to results
   jiraResult.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Helper function to parse Gherkin content
+async function parseGherkinContent(gherkinContent) {
+  // This is a simplified version of the parsing logic in main.js
+  try {
+    // First, split the content into feature blocks
+    const featureBlocks = gherkinContent.split(/Feature:/)
+      .filter(block => block.trim().length > 0)
+      .map(block => `Feature:${block.trim()}`);
+    
+    const parsedFeatures = [];
+    
+    for (let i = 0; i < featureBlocks.length; i++) {
+      const featureContent = featureBlocks[i];
+      
+      // Extract feature name
+      const featureNameMatch = featureContent.match(/Feature:\s*([^\n]+)/);
+      const featureName = featureNameMatch ? featureNameMatch[1].trim() : `Feature_${i + 1}`;
+      
+      // Extract Scenarios
+      const scenarioRegex = /\n\s*Scenario(?:\s+Outline)?(?:\s*):(?:\s*)/;
+      const scenarioBlocks = featureContent.split(scenarioRegex)
+        .slice(1) // Skip the feature description part
+        .map(block => `Scenario: ${block.trim()}`);
+      
+      // Store scenarios with their names and content
+      const scenarios = [];
+      
+      for (const scenarioBlock of scenarioBlocks) {
+        // Extract scenario name
+        const scenarioNameMatch = scenarioBlock.match(/Scenario(?:\s+Outline)?:\s*([^\n]+)/);
+        const scenarioName = scenarioNameMatch ? scenarioNameMatch[1].trim() : '';
+        
+        scenarios.push({
+          name: scenarioName,
+          content: scenarioBlock
+        });
+      }
+      
+      parsedFeatures.push({
+        name: featureName,
+        content: featureContent,
+        scenarios
+      });
+    }
+    
+    return parsedFeatures;
+  } catch (error) {
+    console.error('Error parsing Gherkin content:', error);
+    throw error;
+  }
+}
+
+// Helper function to generate preview items
+function generatePreviewItems(parsedFeatures, jiraConfig, folderName) {
+  const previewItems = [];
+  
+  // Generate a unique ID for each item
+  let idCounter = 1;
+  
+  // Convert folder name to Title Case for Epic name
+  const toTitleCase = (str) => {
+    return str.replace(/\w\S*/g, function(txt) {
+      return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+    });
+  };
+  
+  // Use folder name as Epic name, or default if not provided
+  const epicName = folderName ? toTitleCase(folderName) : "Feature Files";
+  
+  // Create Epic item
+  const epicId = `item-${idCounter++}`;
+  previewItems.push({
+    id: epicId,
+    type: 'epic',
+    name: epicName,
+    summary: epicName,
+    parentId: jiraConfig.parentIssueKey || null,
+    selected: true // Selected by default
+  });
+  
+  // Create Feature items
+  for (const feature of parsedFeatures) {
+    const featureId = `item-${idCounter++}`;
+    previewItems.push({
+      id: featureId,
+      type: 'feature',
+      name: feature.name,
+      summary: feature.name,
+      content: feature.content,
+      parentId: epicId,
+      selected: true // Selected by default
+    });
+    
+    // Create Story items for each Scenario
+    for (const scenario of feature.scenarios) {
+      previewItems.push({
+        id: `item-${idCounter++}`,
+        type: 'story',
+        name: scenario.name,
+        summary: scenario.name,
+        content: scenario.content,
+        parentId: featureId,
+        selected: true // Selected by default
+      });
+    }
+  }
+  
+  return previewItems;
+}
+
+// Helper function to display preview items
+function displayPreviewItems(items) {
+  // Clear previous content
+  jiraPreviewContent.innerHTML = '';
+  
+  // Create HTML for each item
+  for (const item of items) {
+    const itemElement = document.createElement('div');
+    itemElement.className = `preview-item ${item.type}`;
+    
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'preview-item-checkbox';
+    checkbox.checked = item.selected;
+    checkbox.setAttribute('data-id', item.id);
+    
+    // Add event listener to update selection state
+    checkbox.addEventListener('change', (e) => {
+      const itemId = e.target.getAttribute('data-id');
+      const item = previewedJiraItems.find(item => item.id === itemId);
+      if (item) {
+        item.selected = e.target.checked;
+      }
+    });
+    
+    // Create content div
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'preview-item-content';
+    
+    // Create title
+    const title = document.createElement('div');
+    title.className = 'preview-item-title';
+    
+    // Set title based on item type
+    if (item.type === 'epic') {
+      title.textContent = `Epic: ${item.name}`;
+    } else if (item.type === 'feature') {
+      title.textContent = `Feature: ${item.name}`;
+    } else if (item.type === 'story') {
+      title.textContent = `Story: ${item.name}`;
+    }
+    
+    // Create details
+    const details = document.createElement('div');
+    details.className = 'preview-item-details';
+    
+    // Set details based on item type
+    if (item.type === 'epic') {
+      details.textContent = `Will be created as a Level 2 Epic`;
+      if (item.parentId) {
+        details.textContent += ` under Initiative ${item.parentId}`;
+      }
+    } else if (item.type === 'feature') {
+      details.textContent = `Will be created as a Feature under Epic`;
+    } else if (item.type === 'story') {
+      details.textContent = `Will be created as a Story under Feature`;
+    }
+    
+    // Assemble the item
+    contentDiv.appendChild(title);
+    contentDiv.appendChild(details);
+    itemElement.appendChild(checkbox);
+    itemElement.appendChild(contentDiv);
+    jiraPreviewContent.appendChild(itemElement);
+  }
 }
