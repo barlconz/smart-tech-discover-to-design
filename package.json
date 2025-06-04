@@ -17,7 +17,7 @@
   ],
   "author": "",
   "license": "ISC",
-  "description": "A desktop application that converts PDF requirements documents to Gherkin feature files using ChatGPT",
+  "description": "A desktop application that converts PDF requirements documents to Gherkin feature files using ChatGPT and can push them to Jira as Epics and Stories",
   "devDependencies": {
     "electron": "^36.3.2",
     "electron-builder": "^26.0.12"
@@ -31,7 +31,7 @@
   },
   "build": {
     "appId": "com.pdf-to-gherkin.app",
-    "productName": "PDF to Gherkin Converter",
+    "productName": "PDF to Gherkin Converter with Jira Integration",
     "directories": {
       "output": "dist"
     },

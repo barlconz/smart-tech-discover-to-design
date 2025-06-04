@@ -8,7 +8,7 @@ A desktop application that converts PDF requirements documents to Gherkin featur
 - Extract text content from the PDF
 - Use ChatGPT to convert the requirements into Gherkin format feature files
 - Save the generated feature files to your local system
-- Push to Jira with Features as Epics and Given statements as Stories
+- Push to Jira with Features as Epics and Scenarios as Stories in Gherkin format
 - Link created issues to a parent issue in Jira
 
 ## Requirements
@@ -64,8 +64,9 @@ Download the latest release for your platform from the releases page.
     - Epic Link Field (automatically detected for the selected issue type)
 13. Click "Create in Jira" to create Epics and Stories:
     - Each Feature becomes an Epic
-    - Each Given statement becomes a Story linked to its parent Epic
-    - All created issues are linked to the specified parent Initiative (if provided)
+    - Each Scenario becomes a Story linked to its parent Epic
+    - Each Epic is created as a child of the specified parent Initiative (if provided)
+    - All Scenarios are formatted in proper Gherkin style with Given/When/Then steps
 
 ### Credential Management
 

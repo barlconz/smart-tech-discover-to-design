@@ -671,7 +671,7 @@ function displayJiraResults(issues, jiraUrl) {
     epicElement.className = 'jira-item epic';
     epicElement.innerHTML = `
       <div class="jira-item-title">
-        <span class="jira-item-key">${epic.key}</span>: ${epic.summary}
+        <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Feature)
       </div>
       <a href="${epic.url}" class="jira-item-link" target="_blank">View in Jira</a>
     `;
@@ -684,7 +684,7 @@ function displayJiraResults(issues, jiraUrl) {
       storyElement.className = 'jira-item story';
       storyElement.innerHTML = `
         <div class="jira-item-title">
-          <span class="jira-item-key">${story.key}</span>: ${story.summary}
+          <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
         </div>
         <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
       `;
