@@ -130,11 +130,46 @@ ipcMain.handle('select-feature-folder', async () => {
     return { success: false };
   }
   
-  return { 
-    success: true, 
-    folderPath: filePaths[0],
-    folderName: path.basename(filePaths[0])
-  };
+  const folderPath = filePaths[0];
+  const folderName = path.basename(folderPath);
+  
+  try {
+    // Read all files in the selected folder
+    const files = fs.readdirSync(folderPath);
+    
+    // Get file details including type (file/directory) and filter for .feature files
+    const fileDetails = files.map(file => {
+      const filePath = path.join(folderPath, file);
+      const stats = fs.statSync(filePath);
+      return {
+        name: file,
+        path: filePath,
+        isDirectory: stats.isDirectory(),
+        isFeatureFile: file.toLowerCase().endsWith('.feature')
+      };
+    });
+    
+    // Count feature files
+    const featureFilesCount = fileDetails.filter(file => file.isFeatureFile).length;
+    
+    return { 
+      success: true, 
+      folderPath,
+      folderName,
+      files: fileDetails,
+      featureFilesCount
+    };
+  } catch (error) {
+    console.error('Error reading folder contents:', error);
+    return {
+      success: true,
+      folderPath,
+      folderName,
+      files: [],
+      featureFilesCount: 0,
+      error: error.message
+    };
+  }
 });
 
 // Handle processing of feature files from a folder
@@ -983,8 +1018,29 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
             storyFields[storyField] = scenarioGherkinCodeBlock;
           }
           
+          // Create the Story issue
           const storyIssue = await jira.addNewIssue({
             fields: storyFields
+          });
+          
+          // Populate custom field 10377 with the Feature's summary
+          await jira.updateIssue(storyIssue.key, {
+            fields: {
+              "customfield_10377": feature.name
+            }
+          });
+          
+          // Create an "implements" link between the Story and its parent Feature
+          await jira.issueLink({
+            type: {
+              name: "implements"
+            },
+            inwardIssue: {
+              key: storyIssue.key
+            },
+            outwardIssue: {
+              key: featureIssue.key
+            }
           });
           
           createdIssues.push({

@@ -2,6 +2,9 @@
 const selectFolderBtn = document.getElementById('select-folder-btn');
 const selectedFileDiv = document.getElementById('selected-file');
 const folderNameSpan = document.getElementById('folder-name');
+const folderFilesDiv = document.getElementById('folder-files');
+const fileListDiv = document.getElementById('file-list');
+const featureFilesCountP = document.getElementById('feature-files-count');
 const processBtn = document.getElementById('process-btn');
 const resultSection = document.getElementById('result-section');
 const gherkinOutput = document.getElementById('gherkin-output');
@@ -65,12 +68,70 @@ selectFolderBtn.addEventListener('click', async () => {
       selectedFolderName = result.folderName;
       folderNameSpan.textContent = result.folderName;
       selectedFileDiv.classList.remove('hidden');
+      
+      // Display files in the folder
+      if (result.files && result.files.length > 0) {
+        displayFolderFiles(result.files, result.featureFilesCount);
+      } else {
+        // Hide file list if no files
+        folderFilesDiv.classList.add('hidden');
+        if (result.error) {
+          showStatus(`Error reading folder contents: ${result.error}`, true);
+        }
+      }
+      
       validateInputs();
     }
   } catch (error) {
     showStatus(`Error selecting folder: ${error.message}`, true);
   }
 });
+
+// Function to display files in the selected folder
+function displayFolderFiles(files, featureFilesCount) {
+  // Clear previous file list
+  fileListDiv.innerHTML = '';
+  
+  // Sort files: directories first, then feature files, then other files
+  const sortedFiles = [...files].sort((a, b) => {
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+    if (a.isFeatureFile && !b.isFeatureFile) return -1;
+    if (!a.isFeatureFile && b.isFeatureFile) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  
+  // Add each file to the list
+  sortedFiles.forEach(file => {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    
+    if (file.isFeatureFile) {
+      fileItem.classList.add('feature-file');
+    }
+    
+    const icon = document.createElement('span');
+    icon.className = 'file-item-icon';
+    icon.textContent = file.isDirectory ? '📁' : (file.isFeatureFile ? '📄' : '📄');
+    
+    const name = document.createElement('span');
+    name.textContent = file.name;
+    
+    fileItem.appendChild(icon);
+    fileItem.appendChild(name);
+    fileListDiv.appendChild(fileItem);
+  });
+  
+  // Show feature files count
+  if (featureFilesCount > 0) {
+    featureFilesCountP.textContent = `Found ${featureFilesCount} feature file${featureFilesCount !== 1 ? 's' : ''} in this folder.`;
+  } else {
+    featureFilesCountP.textContent = 'No feature files found in this folder.';
+  }
+  
+  // Show the file list section
+  folderFilesDiv.classList.remove('hidden');
+}
 
 // Initialize when the page loads
 window.addEventListener('DOMContentLoaded', async () => {
