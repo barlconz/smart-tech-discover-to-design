@@ -980,10 +980,10 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
             fields: storyFields
           });
           
-          // Populate custom field 10377 with the Feature's summary
+          // Populate custom field 11201 with the Feature's summary
           await jira.updateIssue(storyIssue.key, {
             fields: {
-              "customfield_10377": feature.name
+              "customfield_11201": feature.name
             }
           });
           
