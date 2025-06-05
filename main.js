@@ -987,18 +987,24 @@ ipcMain.handle('create-jira-issues', async (event, { gherkinContent, jiraConfig,
             }
           });
           
-          // Create an "implements" link between the Story and its parent Feature
-          await jira.issueLink({
-            type: {
-              name: "implements"
-            },
-            inwardIssue: {
-              key: storyIssue.key
-            },
-            outwardIssue: {
-              key: featureIssue.key
-            }
-          });
+          // Create a "Relates" link between the Story and its parent Feature
+          try {
+            await jira.issueLink({
+              type: {
+                name: "Relates"
+              },
+              inwardIssue: {
+                key: storyIssue.key
+              },
+              outwardIssue: {
+                key: featureIssue.key
+              }
+            });
+            console.log(`Created "Relates" link from ${storyIssue.key} to ${featureIssue.key}`);
+          } catch (linkError) {
+            // If link creation fails, just log the error but don't fail the whole process
+            console.error(`Could not create link between ${storyIssue.key} and ${featureIssue.key}: ${linkError.message}`);
+          }
           
           createdIssues.push({
             key: storyIssue.key,
