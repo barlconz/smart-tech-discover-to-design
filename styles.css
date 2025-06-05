@@ -76,6 +76,55 @@ h2 {
   border-radius: 4px;
 }
 
+.folder-files {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.folder-files h3 {
+  margin-bottom: 10px;
+  font-size: 1em;
+  color: var(--primary-color);
+}
+
+.file-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding: 5px;
+  background-color: var(--light-bg);
+  border-radius: 4px;
+}
+
+.file-item {
+  padding: 5px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+}
+
+.file-item:last-child {
+  border-bottom: none;
+}
+
+.file-item.feature-file {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.file-item-icon {
+  margin-right: 8px;
+  font-size: 0.9em;
+}
+
+.feature-files-count {
+  font-weight: bold;
+  margin-top: 5px;
+  color: var(--primary-color);
+}
+
 .input-field, .select-field {
   width: 100%;
   padding: 10px;
@@ -270,9 +319,75 @@ footer {
   color: var(--primary-color);
 }
 
-.jira-result-content {
+.jira-result-content,
+.jira-preview-content {
   max-height: 300px;
   overflow-y: auto;
+}
+
+/* Jira Preview Section */
+.jira-preview-section {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: var(--light-bg);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.jira-preview-section h3 {
+  margin-bottom: 10px;
+  color: var(--primary-color);
+}
+
+.preview-item {
+  padding: 10px;
+  margin-bottom: 8px;
+  background-color: white;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: flex-start;
+}
+
+.preview-item-checkbox {
+  margin-right: 10px;
+  margin-top: 3px;
+  transform: scale(1.2);
+}
+
+.preview-item-content {
+  flex: 1;
+}
+
+.preview-item-title {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.preview-item-details {
+  font-size: 0.9em;
+  color: #666;
+}
+
+.preview-item.epic {
+  border-left: 3px solid #6554C0;
+}
+
+.preview-item.feature {
+  border-left: 3px solid var(--primary-color);
+  margin-left: 20px;
+}
+
+.preview-item.story {
+  border-left: 3px solid #0052CC;
+  margin-left: 40px;
+}
+
+.preview-actions {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
 }
 
 .jira-item {

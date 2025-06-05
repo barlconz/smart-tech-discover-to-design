@@ -3,40 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF to Gherkin Converter with Jira Integration</title>
+  <title>Feature Files to Jira Integration</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>PDF to Gherkin Converter with Jira Integration</h1>
-      <p>Convert requirements documents from PDF to Gherkin feature files and push to Jira</p>
+      <h1>Feature Files to Jira Integration</h1>
+      <p>Parse feature files and push to Jira as Features and Stories</p>
     </header>
 
     <main>
       <section class="input-section">
         <div class="file-selection">
-          <h2>Step 1: Select PDF File</h2>
-          <button id="select-pdf-btn" class="btn primary">Select PDF</button>
+          <h2>Step 1: Select Feature Files Folder</h2>
+          <button id="select-folder-btn" class="btn primary">Select Folder</button>
           <div id="selected-file" class="file-info hidden">
-            <p>Selected file: <span id="file-name">None</span></p>
+            <p>Selected folder: <span id="folder-name">None</span></p>
+            <div id="folder-files" class="folder-files hidden">
+              <h3>Files in folder:</h3>
+              <div id="file-list" class="file-list"></div>
+              <p id="feature-files-count" class="feature-files-count"></p>
+            </div>
           </div>
         </div>
 
-        <div class="api-key">
-          <h2>Step 2: Enter OpenAI API Key</h2>
-          <input type="password" id="api-key" placeholder="Enter your OpenAI API key" class="input-field">
-          <p class="hint">Your API key is saved locally for convenience</p>
-        </div>
-
         <div class="process">
-          <h2>Step 3: Process PDF</h2>
-          <button id="process-btn" class="btn primary" disabled>Process PDF</button>
+          <h2>Step 2: Process Feature Files</h2>
+          <button id="process-btn" class="btn primary" disabled>Process Feature Files</button>
         </div>
       </section>
 
       <section id="result-section" class="result-section hidden">
-        <h2>Generated Gherkin Feature Files</h2>
+        <h2>Parsed Feature Files</h2>
         <div class="actions">
           <button id="save-btn" class="btn secondary">Save Feature Files</button>
           <button id="jira-btn" class="btn jira">Push to Jira</button>
@@ -80,45 +79,26 @@
             </div>
             
             <div class="form-group">
-              <label for="jira-epic-type">Epic Issue Type</label>
-              <select id="jira-epic-type" class="select-field">
-                <option value="Epic">Epic</option>
-              </select>
-            </div>
-            
-            <div class="form-group">
-              <label for="jira-story-type">Story Issue Type</label>
-              <select id="jira-story-type" class="select-field">
-                <option value="Story">Story</option>
-              </select>
-            </div>
-            
-            <div class="form-group">
-              <label for="jira-parent">Parent Initiative (Optional)</label>
+              <label for="jira-parent">Parent Initiative (Level 3)</label>
               <select id="jira-parent" class="select-field">
                 <option value="">None</option>
               </select>
-            <p class="hint">Features become Epics and Scenarios become Stories</p>
-            </div>
-            
-            <div class="form-group">
-              <label for="jira-epic-name-field">Epic Name Field</label>
-              <select id="jira-epic-name-field" class="select-field">
-                <option value="customfield_10011">customfield_10011</option>
-              </select>
-              <p class="hint">Custom field for Epic Name in your Jira instance</p>
-            </div>
-            
-            <div class="form-group">
-              <label for="jira-epic-link-field">Epic Link Field</label>
-              <select id="jira-epic-link-field" class="select-field">
-                <option value="customfield_10010">customfield_10010</option>
-              </select>
-              <p class="hint">Custom field for Epic Link in your Jira instance</p>
+            <p class="hint">The Epic (Level 2) will be created under the selected Initiative, with Features and Stories under the Epic</p>
             </div>
           </div>
+          <div id="jira-preview-section" class="jira-preview-section hidden">
+            <h3>Preview Jira Items to Create</h3>
+            <p class="hint">Select the items you want to create in Jira. Uncheck items you don't want to create.</p>
+            <div id="jira-preview-content" class="jira-preview-content"></div>
+            <div class="preview-actions">
+              <button id="select-all-btn" class="btn secondary">Select All</button>
+              <button id="deselect-all-btn" class="btn secondary">Deselect All</button>
+            </div>
+          </div>
+          
           <div class="form-actions">
-            <button id="create-jira-btn" class="btn primary">Create in Jira</button>
+            <button id="preview-jira-btn" class="btn secondary">Preview Items</button>
+            <button id="create-jira-btn" class="btn primary">Create Selected in Jira</button>
           </div>
         </div>
         <div id="jira-result" class="jira-result hidden">
@@ -136,7 +116,7 @@
     </main>
 
     <footer>
-      <p>Powered by Electron and OpenAI</p>
+      <p>Powered by Electron</p>
     </footer>
   </div>
 

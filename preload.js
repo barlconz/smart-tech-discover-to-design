@@ -4,14 +4,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
   'api', {
-    // PDF selection
-    selectPdf: async () => {
-      return await ipcRenderer.invoke('select-pdf');
+    // Feature folder selection
+    selectFeatureFolder: async () => {
+      return await ipcRenderer.invoke('select-feature-folder');
     },
     
-    // Process PDF with ChatGPT
-    processPdf: async (filePath, apiKey) => {
-      return await ipcRenderer.invoke('process-pdf', filePath, apiKey);
+    // Process feature files from folder
+    processFeatureFolder: async (folderPath) => {
+      return await ipcRenderer.invoke('process-feature-folder', folderPath);
     },
     
     // Save Gherkin feature files
@@ -86,7 +86,13 @@ contextBridge.exposeInMainWorld(
     
     // Create Jira issues
     createJiraIssues: async (gherkinContent, jiraConfig) => {
-      return await ipcRenderer.invoke('create-jira-issues', { gherkinContent, jiraConfig });
+      // Extract folderName from jiraConfig if present
+      const { folderName, ...restConfig } = jiraConfig;
+      return await ipcRenderer.invoke('create-jira-issues', { 
+        gherkinContent, 
+        jiraConfig: restConfig,
+        folderName 
+      });
     }
   }
 );

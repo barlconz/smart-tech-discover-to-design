@@ -1,8 +1,10 @@
 // DOM Elements
-const selectPdfBtn = document.getElementById('select-pdf-btn');
+const selectFolderBtn = document.getElementById('select-folder-btn');
 const selectedFileDiv = document.getElementById('selected-file');
-const fileNameSpan = document.getElementById('file-name');
-const apiKeyInput = document.getElementById('api-key');
+const folderNameSpan = document.getElementById('folder-name');
+const folderFilesDiv = document.getElementById('folder-files');
+const fileListDiv = document.getElementById('file-list');
+const featureFilesCountP = document.getElementById('feature-files-count');
 const processBtn = document.getElementById('process-btn');
 const resultSection = document.getElementById('result-section');
 const gherkinOutput = document.getElementById('gherkin-output');
@@ -15,14 +17,15 @@ const jiraApiTokenInput = document.getElementById('jira-api-token');
 const saveCredentialsBtn = document.getElementById('save-credentials-btn');
 const clearCredentialsBtn = document.getElementById('clear-credentials-btn');
 const jiraProjectSelect = document.getElementById('jira-project');
-const jiraEpicTypeSelect = document.getElementById('jira-epic-type');
-const jiraStoryTypeSelect = document.getElementById('jira-story-type');
 const jiraParentSelect = document.getElementById('jira-parent');
-const jiraEpicNameFieldSelect = document.getElementById('jira-epic-name-field');
-const jiraEpicLinkFieldSelect = document.getElementById('jira-epic-link-field');
 const testJiraBtn = document.getElementById('test-jira-btn');
 const loadJiraDataBtn = document.getElementById('load-jira-data-btn');
 const jiraDataSection = document.getElementById('jira-data-section');
+const jiraPreviewSection = document.getElementById('jira-preview-section');
+const jiraPreviewContent = document.getElementById('jira-preview-content');
+const selectAllBtn = document.getElementById('select-all-btn');
+const deselectAllBtn = document.getElementById('deselect-all-btn');
+const previewJiraBtn = document.getElementById('preview-jira-btn');
 const createJiraBtn = document.getElementById('create-jira-btn');
 const jiraResult = document.getElementById('jira-result');
 const jiraResultContent = document.getElementById('jira-result-content');
@@ -31,8 +34,10 @@ const loadingText = document.getElementById('loading-text');
 const statusMessage = document.getElementById('status-message');
 
 // State variables
-let selectedFilePath = null;
+let selectedFolderPath = null;
 let gherkinContent = null;
+let selectedFolderName = null;
+let previewedJiraItems = []; // Store the previewed Jira items
 
 // Helper functions
 function showLoading(message) {
@@ -56,83 +61,114 @@ function showStatus(message, isError = false) {
 }
 
 function validateInputs() {
-  const apiKey = apiKeyInput.value.trim();
-  processBtn.disabled = !selectedFilePath || !apiKey;
+  processBtn.disabled = !selectedFolderPath;
 }
 
 // Event listeners
-selectPdfBtn.addEventListener('click', async () => {
+selectFolderBtn.addEventListener('click', async () => {
   try {
-    const result = await window.api.selectPdf();
+    const result = await window.api.selectFeatureFolder();
     
     if (result.success) {
-      selectedFilePath = result.filePath;
-      fileNameSpan.textContent = result.fileName;
+      selectedFolderPath = result.folderPath;
+      selectedFolderName = result.folderName;
+      folderNameSpan.textContent = result.folderName;
       selectedFileDiv.classList.remove('hidden');
+      
+      // Display files in the folder
+      if (result.files && result.files.length > 0) {
+        displayFolderFiles(result.files, result.featureFilesCount);
+      } else {
+        // Hide file list if no files
+        folderFilesDiv.classList.add('hidden');
+        if (result.error) {
+          showStatus(`Error reading folder contents: ${result.error}`, true);
+        }
+      }
+      
       validateInputs();
     }
   } catch (error) {
-    showStatus(`Error selecting PDF: ${error.message}`, true);
+    showStatus(`Error selecting folder: ${error.message}`, true);
   }
 });
 
-// Load saved API key when the page loads
+// Function to display files in the selected folder
+function displayFolderFiles(files, featureFilesCount) {
+  // Clear previous file list
+  fileListDiv.innerHTML = '';
+  
+  // Sort files: directories first, then feature files, then other files
+  const sortedFiles = [...files].sort((a, b) => {
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+    if (a.isFeatureFile && !b.isFeatureFile) return -1;
+    if (!a.isFeatureFile && b.isFeatureFile) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  
+  // Add each file to the list
+  sortedFiles.forEach(file => {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    
+    if (file.isFeatureFile) {
+      fileItem.classList.add('feature-file');
+    }
+    
+    const icon = document.createElement('span');
+    icon.className = 'file-item-icon';
+    icon.textContent = file.isDirectory ? '📁' : (file.isFeatureFile ? '📄' : '📄');
+    
+    const name = document.createElement('span');
+    name.textContent = file.name;
+    
+    fileItem.appendChild(icon);
+    fileItem.appendChild(name);
+    fileListDiv.appendChild(fileItem);
+  });
+  
+  // Show feature files count
+  if (featureFilesCount > 0) {
+    featureFilesCountP.textContent = `Found ${featureFilesCount} feature file${featureFilesCount !== 1 ? 's' : ''} in this folder.`;
+  } else {
+    featureFilesCountP.textContent = 'No feature files found in this folder.';
+  }
+  
+  // Show the file list section
+  folderFilesDiv.classList.remove('hidden');
+}
+
+// Initialize when the page loads
 window.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const result = await window.api.loadApiKey();
-    if (result.success && result.apiKey) {
-      apiKeyInput.value = result.apiKey;
-      validateInputs();
-    }
-  } catch (error) {
-    console.error('Error loading API key:', error);
-  }
-});
-
-apiKeyInput.addEventListener('input', validateInputs);
-
-// Save API key when it changes
-apiKeyInput.addEventListener('change', async () => {
-  const apiKey = apiKeyInput.value.trim();
-  if (apiKey) {
-    try {
-      await window.api.saveApiKey(apiKey);
-    } catch (error) {
-      console.error('Error saving API key:', error);
-    }
-  }
+  validateInputs();
 });
 
 processBtn.addEventListener('click', async () => {
-  if (!selectedFilePath) {
-    showStatus('Please select a PDF file first', true);
-    return;
-  }
-  
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
-    showStatus('Please enter your OpenAI API key', true);
+  if (!selectedFolderPath) {
+    showStatus('Please select a folder with feature files first', true);
     return;
   }
   
   try {
-    showLoading('Processing PDF with ChatGPT...');
+    showLoading('Processing feature files...');
     
-    const result = await window.api.processPdf(selectedFilePath, apiKey);
+    const result = await window.api.processFeatureFolder(selectedFolderPath);
     
     hideLoading();
     
     if (result.success) {
       gherkinContent = result.gherkinContent;
+      selectedFolderName = result.folderName;
       gherkinOutput.textContent = gherkinContent;
       resultSection.classList.remove('hidden');
-      showStatus('PDF successfully processed!');
+      showStatus(`Successfully processed ${result.featureFiles.length} feature files!`);
     } else {
-      showStatus(`Error processing PDF: ${result.error}`, true);
+      showStatus(`Error processing feature files: ${result.error}`, true);
     }
   } catch (error) {
     hideLoading();
-    showStatus(`Error processing PDF: ${error.message}`, true);
+    showStatus(`Error processing feature files: ${error.message}`, true);
   }
 });
 
@@ -170,6 +206,11 @@ jiraBtn.addEventListener('click', async () => {
   
   jiraSection.classList.remove('hidden');
   jiraResult.classList.add('hidden');
+  jiraPreviewSection.classList.add('hidden');
+  
+  // Hide create button until preview is done
+  createJiraBtn.classList.add('hidden');
+  previewJiraBtn.classList.remove('hidden');
   
   // Load saved credentials if available
   try {
@@ -280,16 +321,8 @@ loadJiraDataBtn.addEventListener('click', async () => {
       throw new Error(issueTypesResult.error || 'Failed to load Jira issue types');
     }
     
-    // Load custom fields
-    const fieldsResult = await window.api.getJiraFields(jiraConfig);
-    if (!fieldsResult.success) {
-      throw new Error(fieldsResult.error || 'Failed to load Jira fields');
-    }
-    
     // Populate dropdowns
     populateProjectsDropdown(projectsResult.projects);
-    populateIssueTypesDropdowns(issueTypesResult.issueTypes);
-    populateCustomFieldsDropdowns(fieldsResult.fields);
     
     // Show the data section
     jiraDataSection.classList.remove('hidden');
@@ -329,8 +362,6 @@ async function handleProjectChange() {
   if (!projectKey) {
     // Clear dropdowns if no project selected
     jiraParentSelect.innerHTML = '<option value="">None</option>';
-    jiraEpicTypeSelect.innerHTML = '<option value="Epic">Epic</option>';
-    jiraStoryTypeSelect.innerHTML = '<option value="Story">Story</option>';
     return;
   }
   
@@ -339,15 +370,6 @@ async function handleProjectChange() {
     
     const jiraConfig = getJiraConfig();
     
-    // Load project-specific issue types
-    const issueTypesResult = await window.api.getProjectIssueTypes(jiraConfig, projectKey);
-    if (!issueTypesResult.success) {
-      throw new Error(issueTypesResult.error || 'Failed to load project issue types');
-    }
-    
-    // Populate issue type dropdowns with project-specific types
-    populateProjectIssueTypesDropdowns(issueTypesResult.issueTypes);
-    
     // Load issues for parent selection
     await loadProjectIssues(projectKey);
     
@@ -355,209 +377,6 @@ async function handleProjectChange() {
   } catch (error) {
     hideLoading();
     showStatus(`Error loading project data: ${error.message}`, true);
-  }
-}
-
-// Helper function to populate issue types dropdowns with all issue types
-function populateIssueTypesDropdowns(issueTypes) {
-  // Clear existing options
-  jiraEpicTypeSelect.innerHTML = '';
-  jiraStoryTypeSelect.innerHTML = '';
-  
-  // Filter for non-subtask issue types
-  const regularIssueTypes = issueTypes.filter(type => !type.subtask);
-  
-  // Add issue types
-  regularIssueTypes.forEach(type => {
-    // Add to Epic type dropdown
-    const epicOption = document.createElement('option');
-    epicOption.value = type.name;
-    epicOption.textContent = type.name;
-    if (type.name === 'Epic') {
-      epicOption.selected = true;
-    }
-    jiraEpicTypeSelect.appendChild(epicOption);
-    
-    // Add to Story type dropdown
-    const storyOption = document.createElement('option');
-    storyOption.value = type.name;
-    storyOption.textContent = type.name;
-    if (type.name === 'Story') {
-      storyOption.selected = true;
-    }
-    jiraStoryTypeSelect.appendChild(storyOption);
-  });
-  
-  // Add event listeners for issue type changes
-  jiraEpicTypeSelect.addEventListener('change', handleEpicTypeChange);
-  jiraStoryTypeSelect.addEventListener('change', handleStoryTypeChange);
-}
-
-// Helper function to populate issue types dropdowns with project-specific issue types
-function populateProjectIssueTypesDropdowns(issueTypes) {
-  // Clear existing options
-  jiraEpicTypeSelect.innerHTML = '';
-  jiraStoryTypeSelect.innerHTML = '';
-  
-  // Filter for non-subtask issue types
-  const regularIssueTypes = issueTypes.filter(type => !type.subtask);
-  
-  // Add issue types
-  regularIssueTypes.forEach(type => {
-    // Add to Epic type dropdown
-    const epicOption = document.createElement('option');
-    epicOption.value = type.name;
-    epicOption.textContent = type.name;
-    epicOption.dataset.id = type.id; // Store the ID for field lookup
-    if (type.name === 'Epic') {
-      epicOption.selected = true;
-    }
-    jiraEpicTypeSelect.appendChild(epicOption);
-    
-    // Add to Story type dropdown
-    const storyOption = document.createElement('option');
-    storyOption.value = type.name;
-    storyOption.textContent = type.name;
-    storyOption.dataset.id = type.id; // Store the ID for field lookup
-    if (type.name === 'Story') {
-      storyOption.selected = true;
-    }
-    jiraStoryTypeSelect.appendChild(storyOption);
-  });
-  
-  // Trigger field loading for the selected issue types
-  handleEpicTypeChange();
-  handleStoryTypeChange();
-}
-
-// Handle Epic type selection change
-async function handleEpicTypeChange() {
-  const projectKey = jiraProjectSelect.value;
-  if (!projectKey) return;
-  
-  const selectedOption = jiraEpicTypeSelect.options[jiraEpicTypeSelect.selectedIndex];
-  const issueTypeId = selectedOption.dataset.id;
-  if (!issueTypeId) return;
-  
-  try {
-    showLoading('Loading Epic type fields...');
-    
-    const jiraConfig = getJiraConfig();
-    const result = await window.api.getIssueTypeFields(jiraConfig, projectKey, issueTypeId);
-    
-    if (result.success) {
-      // Find Epic Name field if it exists for this issue type
-      const epicNameFields = result.fields.filter(field => 
-        field.name.toLowerCase().includes('epic') && 
-        field.name.toLowerCase().includes('name')
-      );
-      
-      if (epicNameFields.length > 0) {
-        // Update Epic Name field dropdown
-        jiraEpicNameFieldSelect.innerHTML = '';
-        epicNameFields.forEach(field => {
-          const option = document.createElement('option');
-          option.value = field.id;
-          option.textContent = `${field.name} (${field.id})`;
-          jiraEpicNameFieldSelect.appendChild(option);
-        });
-      }
-    }
-    
-    hideLoading();
-  } catch (error) {
-    hideLoading();
-    console.error('Error loading Epic type fields:', error);
-  }
-}
-
-// Handle Story type selection change
-async function handleStoryTypeChange() {
-  const projectKey = jiraProjectSelect.value;
-  if (!projectKey) return;
-  
-  const selectedOption = jiraStoryTypeSelect.options[jiraStoryTypeSelect.selectedIndex];
-  const issueTypeId = selectedOption.dataset.id;
-  if (!issueTypeId) return;
-  
-  try {
-    showLoading('Loading Story type fields...');
-    
-    const jiraConfig = getJiraConfig();
-    const result = await window.api.getIssueTypeFields(jiraConfig, projectKey, issueTypeId);
-    
-    if (result.success) {
-      // Find Epic Link field if it exists for this issue type
-      const epicLinkFields = result.fields.filter(field => 
-        field.name.toLowerCase().includes('epic') && 
-        field.name.toLowerCase().includes('link')
-      );
-      
-      if (epicLinkFields.length > 0) {
-        // Update Epic Link field dropdown
-        jiraEpicLinkFieldSelect.innerHTML = '';
-        epicLinkFields.forEach(field => {
-          const option = document.createElement('option');
-          option.value = field.id;
-          option.textContent = `${field.name} (${field.id})`;
-          jiraEpicLinkFieldSelect.appendChild(option);
-        });
-      }
-    }
-    
-    hideLoading();
-  } catch (error) {
-    hideLoading();
-    console.error('Error loading Story type fields:', error);
-  }
-}
-
-// Helper function to populate custom fields dropdowns
-function populateCustomFieldsDropdowns(fields) {
-  // Clear existing options
-  jiraEpicNameFieldSelect.innerHTML = '';
-  jiraEpicLinkFieldSelect.innerHTML = '';
-  
-  // Add fields that might be Epic Name fields
-  const epicNameFields = fields.filter(field => 
-    field.name.toLowerCase().includes('epic') && 
-    field.name.toLowerCase().includes('name')
-  );
-  
-  if (epicNameFields.length > 0) {
-    epicNameFields.forEach(field => {
-      const option = document.createElement('option');
-      option.value = field.id;
-      option.textContent = `${field.name} (${field.id})`;
-      jiraEpicNameFieldSelect.appendChild(option);
-    });
-  } else {
-    // Add default option
-    const option = document.createElement('option');
-    option.value = 'customfield_10011';
-    option.textContent = 'customfield_10011 (default)';
-    jiraEpicNameFieldSelect.appendChild(option);
-  }
-  
-  // Add fields that might be Epic Link fields
-  const epicLinkFields = fields.filter(field => 
-    field.name.toLowerCase().includes('epic') && 
-    field.name.toLowerCase().includes('link')
-  );
-  
-  if (epicLinkFields.length > 0) {
-    epicLinkFields.forEach(field => {
-      const option = document.createElement('option');
-      option.value = field.id;
-      option.textContent = `${field.name} (${field.id})`;
-      jiraEpicLinkFieldSelect.appendChild(option);
-    });
-  } else {
-    // Add default option
-    const option = document.createElement('option');
-    option.value = 'customfield_10010';
-    option.textContent = 'customfield_10010 (default)';
-    jiraEpicLinkFieldSelect.appendChild(option);
   }
 }
 
@@ -591,10 +410,10 @@ async function loadProjectIssues(projectKey) {
   }
 }
 
-// Create Jira issues
-createJiraBtn.addEventListener('click', async () => {
+// Preview Jira issues before creation
+previewJiraBtn.addEventListener('click', async () => {
   if (!gherkinContent) {
-    showStatus('No Gherkin content to push to Jira', true);
+    showStatus('No Gherkin content to preview', true);
     return;
   }
   
@@ -605,9 +424,69 @@ createJiraBtn.addEventListener('click', async () => {
   }
   
   try {
-    showLoading('Creating Jira issues...');
+    showLoading('Generating preview of Jira issues...');
     
-    const result = await window.api.createJiraIssues(gherkinContent, jiraConfig);
+    // Parse the Gherkin content to extract features and scenarios
+    const parsedFeatures = await parseGherkinContent(gherkinContent);
+    
+    // Generate preview items
+    previewedJiraItems = generatePreviewItems(parsedFeatures, jiraConfig, selectedFolderName);
+    
+    // Display preview items
+    displayPreviewItems(previewedJiraItems);
+    
+    hideLoading();
+    
+    // Show the preview section and create button
+    jiraPreviewSection.classList.remove('hidden');
+    createJiraBtn.classList.remove('hidden');
+    
+    // Scroll to preview section
+    jiraPreviewSection.scrollIntoView({ behavior: 'smooth' });
+    
+    showStatus(`Generated preview of ${previewedJiraItems.length} Jira issues`);
+  } catch (error) {
+    hideLoading();
+    showStatus(`Error generating preview: ${error.message}`, true);
+  }
+});
+
+// Create selected Jira issues
+createJiraBtn.addEventListener('click', async () => {
+  if (!gherkinContent || previewedJiraItems.length === 0) {
+    showStatus('No Jira items to create', true);
+    return;
+  }
+  
+  const jiraConfig = getJiraConfig();
+  
+  if (!validateJiraConfig(jiraConfig, ['url', 'username', 'apiToken', 'projectKey'])) {
+    return;
+  }
+  
+  // Get selected items
+  const selectedItems = previewedJiraItems.filter(item => item.selected);
+  
+  if (selectedItems.length === 0) {
+    showStatus('No items selected for creation', true);
+    return;
+  }
+  
+  try {
+    showLoading('Creating selected Jira issues...');
+    
+    // Create a modified config with selected items
+    const configWithSelection = {
+      ...jiraConfig,
+      folderName: selectedFolderName,
+      selectedItems: selectedItems.map(item => ({
+        id: item.id,
+        type: item.type,
+        parentId: item.parentId
+      }))
+    };
+    
+    const result = await window.api.createJiraIssues(gherkinContent, configWithSelection);
     
     hideLoading();
     
@@ -623,6 +502,40 @@ createJiraBtn.addEventListener('click', async () => {
   }
 });
 
+// Select all items
+selectAllBtn.addEventListener('click', () => {
+  const checkboxes = document.querySelectorAll('.preview-item-checkbox');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = true;
+    
+    // Update the state in previewedJiraItems
+    const itemId = checkbox.getAttribute('data-id');
+    const item = previewedJiraItems.find(item => item.id === itemId);
+    if (item) {
+      item.selected = true;
+    }
+  });
+  
+  showStatus('All items selected');
+});
+
+// Deselect all items
+deselectAllBtn.addEventListener('click', () => {
+  const checkboxes = document.querySelectorAll('.preview-item-checkbox');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = false;
+    
+    // Update the state in previewedJiraItems
+    const itemId = checkbox.getAttribute('data-id');
+    const item = previewedJiraItems.find(item => item.id === itemId);
+    if (item) {
+      item.selected = false;
+    }
+  });
+  
+  showStatus('All items deselected');
+});
+
 // Helper function to get Jira configuration from form
 function getJiraConfig() {
   return {
@@ -631,10 +544,12 @@ function getJiraConfig() {
     apiToken: jiraApiTokenInput.value.trim(),
     projectKey: jiraProjectSelect.value.trim(),
     parentIssueKey: jiraParentSelect.value.trim(),
-    epicNameField: jiraEpicNameFieldSelect.value.trim() || 'customfield_10011',
-    epicLinkField: jiraEpicLinkFieldSelect.value.trim() || 'customfield_10010',
-    epicType: jiraEpicTypeSelect.value.trim() || 'Epic',
-    storyType: jiraStoryTypeSelect.value.trim() || 'Story'
+    epicNameField: '', // No Epic Name field
+    epicLinkField: '', // No Epic Link field
+    storyField: 'customfield_10577', // Use custom field 10577 for Scenario content
+    epicType: 'Epic', // Default Epic type
+    featureType: 'Feature', // Default Feature type
+    storyType: 'Story' // Default Story type
   };
 }
 
@@ -663,6 +578,7 @@ function displayJiraResults(issues, jiraUrl) {
   
   // Group issues by type
   const epics = issues.filter(issue => issue.type === 'epic');
+  const features = issues.filter(issue => issue.type === 'feature');
   const stories = issues.filter(issue => issue.type === 'story');
   
   // Create HTML for each issue
@@ -671,27 +587,221 @@ function displayJiraResults(issues, jiraUrl) {
     epicElement.className = 'jira-item epic';
     epicElement.innerHTML = `
       <div class="jira-item-title">
-        <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Feature)
+        <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Epic)
       </div>
       <a href="${epic.url}" class="jira-item-link" target="_blank">View in Jira</a>
     `;
     jiraResultContent.appendChild(epicElement);
     
-    // Add related stories
-    const epicStories = stories.filter(story => story.epicKey === epic.key);
-    for (const story of epicStories) {
-      const storyElement = document.createElement('div');
-      storyElement.className = 'jira-item story';
-      storyElement.innerHTML = `
+    // Add related features
+    const epicFeatures = features.filter(feature => feature.epicKey === epic.key);
+    for (const feature of epicFeatures) {
+      const featureElement = document.createElement('div');
+      featureElement.className = 'jira-item feature';
+      featureElement.style.marginLeft = '20px';
+      featureElement.innerHTML = `
         <div class="jira-item-title">
-          <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
+          <span class="jira-item-key">${feature.key}</span>: ${feature.summary} (Feature)
         </div>
-        <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
+        <a href="${feature.url}" class="jira-item-link" target="_blank">View in Jira</a>
       `;
-      jiraResultContent.appendChild(storyElement);
+      jiraResultContent.appendChild(featureElement);
+      
+      // Add related stories
+      const featureStories = stories.filter(story => story.featureKey === feature.key);
+      for (const story of featureStories) {
+        const storyElement = document.createElement('div');
+        storyElement.className = 'jira-item story';
+        storyElement.style.marginLeft = '40px';
+        storyElement.innerHTML = `
+          <div class="jira-item-title">
+            <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
+          </div>
+          <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
+        `;
+        jiraResultContent.appendChild(storyElement);
+      }
     }
   }
   
-  // Scroll to results
+// Scroll to results
   jiraResult.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Helper function to parse Gherkin content
+async function parseGherkinContent(gherkinContent) {
+  // This is a simplified version of the parsing logic in main.js
+  try {
+    // First, split the content into feature blocks
+    const featureBlocks = gherkinContent.split(/Feature:/)
+      .filter(block => block.trim().length > 0)
+      .map(block => `Feature:${block.trim()}`);
+    
+    const parsedFeatures = [];
+    
+    for (let i = 0; i < featureBlocks.length; i++) {
+      const featureContent = featureBlocks[i];
+      
+      // Extract feature name
+      const featureNameMatch = featureContent.match(/Feature:\s*([^\n]+)/);
+      const featureName = featureNameMatch ? featureNameMatch[1].trim() : `Feature_${i + 1}`;
+      
+      // Extract Scenarios
+      const scenarioRegex = /\n\s*Scenario(?:\s+Outline)?(?:\s*):(?:\s*)/;
+      const scenarioBlocks = featureContent.split(scenarioRegex)
+        .slice(1) // Skip the feature description part
+        .map(block => `Scenario: ${block.trim()}`);
+      
+      // Store scenarios with their names and content
+      const scenarios = [];
+      
+      for (const scenarioBlock of scenarioBlocks) {
+        // Extract scenario name
+        const scenarioNameMatch = scenarioBlock.match(/Scenario(?:\s+Outline)?:\s*([^\n]+)/);
+        const scenarioName = scenarioNameMatch ? scenarioNameMatch[1].trim() : '';
+        
+        scenarios.push({
+          name: scenarioName,
+          content: scenarioBlock
+        });
+      }
+      
+      parsedFeatures.push({
+        name: featureName,
+        content: featureContent,
+        scenarios
+      });
+    }
+    
+    return parsedFeatures;
+  } catch (error) {
+    console.error('Error parsing Gherkin content:', error);
+    throw error;
+  }
+}
+
+// Helper function to generate preview items
+function generatePreviewItems(parsedFeatures, jiraConfig, folderName) {
+  const previewItems = [];
+  
+  // Generate a unique ID for each item
+  let idCounter = 1;
+  
+  // Convert folder name to Title Case for Epic name
+  const toTitleCase = (str) => {
+    return str.replace(/\w\S*/g, function(txt) {
+      return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+    });
+  };
+  
+  // Use folder name as Epic name, or default if not provided
+  const epicName = folderName ? toTitleCase(folderName) : "Feature Files";
+  
+  // Create Epic item
+  const epicId = `item-${idCounter++}`;
+  previewItems.push({
+    id: epicId,
+    type: 'epic',
+    name: epicName,
+    summary: epicName,
+    parentId: jiraConfig.parentIssueKey || null,
+    selected: true // Selected by default
+  });
+  
+  // Create Feature items
+  for (const feature of parsedFeatures) {
+    const featureId = `item-${idCounter++}`;
+    previewItems.push({
+      id: featureId,
+      type: 'feature',
+      name: feature.name,
+      summary: feature.name,
+      content: feature.content,
+      parentId: epicId,
+      selected: true // Selected by default
+    });
+    
+    // Create Story items for each Scenario
+    for (const scenario of feature.scenarios) {
+      previewItems.push({
+        id: `item-${idCounter++}`,
+        type: 'story',
+        name: scenario.name,
+        summary: scenario.name,
+        content: scenario.content,
+        parentId: featureId,
+        selected: true // Selected by default
+      });
+    }
+  }
+  
+  return previewItems;
+}
+
+// Helper function to display preview items
+function displayPreviewItems(items) {
+  // Clear previous content
+  jiraPreviewContent.innerHTML = '';
+  
+  // Create HTML for each item
+  for (const item of items) {
+    const itemElement = document.createElement('div');
+    itemElement.className = `preview-item ${item.type}`;
+    
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'preview-item-checkbox';
+    checkbox.checked = item.selected;
+    checkbox.setAttribute('data-id', item.id);
+    
+    // Add event listener to update selection state
+    checkbox.addEventListener('change', (e) => {
+      const itemId = e.target.getAttribute('data-id');
+      const item = previewedJiraItems.find(item => item.id === itemId);
+      if (item) {
+        item.selected = e.target.checked;
+      }
+    });
+    
+    // Create content div
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'preview-item-content';
+    
+    // Create title
+    const title = document.createElement('div');
+    title.className = 'preview-item-title';
+    
+    // Set title based on item type
+    if (item.type === 'epic') {
+      title.textContent = `Epic: ${item.name}`;
+    } else if (item.type === 'feature') {
+      title.textContent = `Feature: ${item.name}`;
+    } else if (item.type === 'story') {
+      title.textContent = `Story: ${item.name}`;
+    }
+    
+    // Create details
+    const details = document.createElement('div');
+    details.className = 'preview-item-details';
+    
+    // Set details based on item type
+    if (item.type === 'epic') {
+      details.textContent = `Will be created as a Level 2 Epic`;
+      if (item.parentId) {
+        details.textContent += ` under Initiative ${item.parentId}`;
+      }
+    } else if (item.type === 'feature') {
+      details.textContent = `Will be created as a Feature under Epic`;
+    } else if (item.type === 'story') {
+      details.textContent = `Will be created as a Story under Feature`;
+    }
+    
+    // Assemble the item
+    contentDiv.appendChild(title);
+    contentDiv.appendChild(details);
+    itemElement.appendChild(checkbox);
+    itemElement.appendChild(contentDiv);
+    jiraPreviewContent.appendChild(itemElement);
+  }
 }
