@@ -79,11 +79,52 @@
             </div>
             
             <div class="form-group">
-              <label for="jira-parent">Parent Initiative (Level 3)</label>
+              <label>Parent Hierarchy Level</label>
+              <div class="radio-group">
+                <label><input type="radio" name="hierarchy-level" id="level3-radio" value="level3" checked> Level 3 (Initiative)</label>
+                <label><input type="radio" name="hierarchy-level" id="level2-radio" value="level2"> Level 2 (Epic)</label>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="jira-parent"><span id="parent-level-label">Parent Initiative (Level 3)</span></label>
               <select id="jira-parent" class="select-field">
                 <option value="">None</option>
               </select>
-            <p class="hint">The Epic (Level 2) will be created under the selected Initiative, with Features and Stories under the Epic</p>
+              <p class="hint" id="hierarchy-hint">The Epic (Level 2) will be created under the selected Initiative, with Features and Stories under the Epic</p>
+            </div>
+            
+            <!-- Target Content Fields Section -->
+            <div id="target-content-fields" class="target-content-fields">
+              <h3>Target Content Fields</h3>
+              <p class="hint">Select the fields where Gherkin content should be stored for each issue type.</p>
+              
+              <!-- Feature Content Field (visible for Level 3 hierarchy) -->
+              <div id="feature-field-section" class="form-group">
+                <label for="feature-content-field">Feature Content Field</label>
+                <select id="feature-content-field" class="select-field">
+                  <option value="description">Description (Default)</option>
+                </select>
+                <p class="hint">The field where Feature content will be stored.</p>
+              </div>
+              
+              <!-- Story Content Field (visible for both hierarchies) -->
+              <div id="story-field-section" class="form-group">
+                <label for="story-content-field">Story Content Field</label>
+                <select id="story-content-field" class="select-field">
+                  <option value="description">Description (Default)</option>
+                </select>
+                <p class="hint">The field where Story/Scenario content will be stored.</p>
+              </div>
+              
+              <!-- Sub-task Content Field (visible for Level 2 hierarchy) -->
+              <div id="subtask-field-section" class="form-group">
+                <label for="subtask-content-field">Sub-task Content Field</label>
+                <select id="subtask-content-field" class="select-field">
+                  <option value="description">Description (Default)</option>
+                </select>
+                <p class="hint">The field where Sub-task/Scenario content will be stored.</p>
+              </div>
             </div>
           </div>
           <div id="jira-preview-section" class="jira-preview-section hidden">
