@@ -299,6 +299,23 @@ footer {
   font-weight: bold;
 }
 
+.radio-group {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 10px;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.radio-group input[type="radio"] {
+  margin-right: 5px;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -383,6 +400,11 @@ footer {
   margin-left: 40px;
 }
 
+.preview-item.subtask {
+  border-left: 3px solid #00C7E6;
+  margin-left: 60px;
+}
+
 .preview-actions {
   margin-top: 15px;
   display: flex;
@@ -404,6 +426,11 @@ footer {
 .jira-item.story {
   border-left-color: #0052CC;
   margin-left: 20px;
+}
+
+.jira-item.subtask {
+  border-left-color: #00C7E6;
+  margin-left: 40px;
 }
 
 .jira-item-key {

@@ -18,6 +18,10 @@ const saveCredentialsBtn = document.getElementById('save-credentials-btn');
 const clearCredentialsBtn = document.getElementById('clear-credentials-btn');
 const jiraProjectSelect = document.getElementById('jira-project');
 const jiraParentSelect = document.getElementById('jira-parent');
+const parentLevelLabel = document.getElementById('parent-level-label');
+const hierarchyHint = document.getElementById('hierarchy-hint');
+const level3Radio = document.getElementById('level3-radio');
+const level2Radio = document.getElementById('level2-radio');
 const testJiraBtn = document.getElementById('test-jira-btn');
 const loadJiraDataBtn = document.getElementById('load-jira-data-btn');
 const jiraDataSection = document.getElementById('jira-data-section');
@@ -32,6 +36,15 @@ const jiraResultContent = document.getElementById('jira-result-content');
 const loadingDiv = document.getElementById('loading');
 const loadingText = document.getElementById('loading-text');
 const statusMessage = document.getElementById('status-message');
+
+// Target Content Fields DOM Elements
+const targetContentFieldsSection = document.getElementById('target-content-fields');
+const featureFieldSection = document.getElementById('feature-field-section');
+const storyFieldSection = document.getElementById('story-field-section');
+const subtaskFieldSection = document.getElementById('subtask-field-section');
+const featureContentField = document.getElementById('feature-content-field');
+const storyContentField = document.getElementById('story-content-field');
+const subtaskContentField = document.getElementById('subtask-content-field');
 
 // State variables
 let selectedFolderPath = null;
@@ -142,7 +155,134 @@ function displayFolderFiles(files, featureFilesCount) {
 // Initialize when the page loads
 window.addEventListener('DOMContentLoaded', async () => {
   validateInputs();
+  
+  // Add event listeners for hierarchy level radio buttons
+  level3Radio.addEventListener('change', updateHierarchyLabels);
+  level2Radio.addEventListener('change', updateHierarchyLabels);
+  
+  // Initialize hierarchy labels
+  updateHierarchyLabels();
 });
+
+// Update labels and hints based on selected hierarchy level
+function updateHierarchyLabels() {
+  const isLevel3 = level3Radio.checked;
+  
+  if (isLevel3) {
+    parentLevelLabel.textContent = 'Parent Initiative (Level 3)';
+    hierarchyHint.textContent = 'The Epic (Level 2) will be created under the selected Initiative, with Features and Stories under the Epic';
+    showLoading('Loading Level 3 items...');
+    
+    // Show Feature field section, hide Subtask field section
+    featureFieldSection.classList.remove('hidden');
+    subtaskFieldSection.classList.add('hidden');
+  } else {
+    parentLevelLabel.textContent = 'Parent Epic (Level 2)';
+    hierarchyHint.textContent = 'Features from file will be created as Stories under the selected Epic, with Scenarios created as Sub-tasks';
+    showLoading('Loading Level 2 items...');
+    
+    // Hide Feature field section, show Subtask field section
+    featureFieldSection.classList.add('hidden');
+    subtaskFieldSection.classList.remove('hidden');
+  }
+  
+  // Story field section is always visible
+  storyFieldSection.classList.remove('hidden');
+  
+  // Reload parent items if a project is selected
+  const projectKey = jiraProjectSelect.value;
+  if (projectKey) {
+    loadProjectIssues(projectKey).then(() => {
+      hideLoading();
+      
+      // Load custom fields for the selected project
+      loadCustomFields(projectKey);
+    }).catch(error => {
+      hideLoading();
+      showStatus(`Error loading parent items: ${error.message}`, true);
+    });
+  } else {
+    hideLoading();
+  }
+}
+
+// Function to load custom fields for a project
+async function loadCustomFields(projectKey) {
+  try {
+    showLoading('Loading custom fields...');
+    
+    const jiraConfig = getJiraConfig();
+    
+    console.log('Loading custom fields for project:', projectKey);
+    
+    // Get all custom fields
+    const fieldsResult = await window.api.getJiraFields(jiraConfig);
+    
+    console.log('Fields result:', fieldsResult);
+    
+    if (!fieldsResult.success) {
+      throw new Error(fieldsResult.error || 'Failed to load Jira fields');
+    }
+    
+    console.log('Available fields:', fieldsResult.fields);
+    
+    // Filter for paragraph fields (text fields that can store Gherkin content)
+    const paragraphFields = fieldsResult.fields.filter(field => 
+      field.schema && 
+      (field.schema.type === 'string' || field.schema.type === 'text')
+    );
+    
+    console.log('Paragraph fields:', paragraphFields);
+    
+    // Populate the field dropdowns
+    populateFieldDropdowns(paragraphFields);
+    
+    hideLoading();
+  } catch (error) {
+    console.error('Error loading custom fields:', error);
+    hideLoading();
+    showStatus(`Error loading custom fields: ${error.message}`, true);
+  }
+}
+
+// Function to populate field dropdowns
+function populateFieldDropdowns(fields) {
+  // Helper function to populate a single dropdown
+  const populateDropdown = (dropdown, selectedValue = 'description') => {
+    // Save the current selection if it exists
+    const currentValue = dropdown.value;
+    
+    // Clear existing options except the first one (Description)
+    dropdown.innerHTML = '<option value="description">Description (Default)</option>';
+    
+    // Add fields
+    fields.forEach(field => {
+      const option = document.createElement('option');
+      option.value = field.id;
+      option.textContent = field.name;
+      
+      // Select this option if it matches the previously selected value
+      if (field.id === currentValue) {
+        option.selected = true;
+      }
+      
+      dropdown.appendChild(option);
+    });
+    
+    // If a specific value should be selected and it exists, select it
+    if (selectedValue && selectedValue !== 'description') {
+      const option = Array.from(dropdown.options).find(opt => opt.value === selectedValue);
+      if (option) {
+        option.selected = true;
+      }
+    }
+  };
+  
+  // Populate each dropdown
+  populateDropdown(featureContentField);
+  populateDropdown(storyContentField, 'customfield_10577'); // Default to custom field 10577 for Story
+  populateDropdown(subtaskContentField);
+}
 
 processBtn.addEventListener('click', async () => {
   if (!selectedFolderPath) {
@@ -373,6 +513,9 @@ async function handleProjectChange() {
     // Load issues for parent selection
     await loadProjectIssues(projectKey);
     
+    // Load custom fields for the selected project
+    await loadCustomFields(projectKey);
+    
     hideLoading();
   } catch (error) {
     hideLoading();
@@ -386,7 +529,12 @@ async function loadProjectIssues(projectKey) {
     showLoading('Loading Initiatives...');
     
     const jiraConfig = getJiraConfig();
+    console.log('Loading issues for project:', projectKey);
+    console.log('Jira config:', jiraConfig);
+    
     const result = await window.api.searchJiraIssues(jiraConfig, projectKey);
+    
+    console.log('Search issues result:', result);
     
     hideLoading();
     
@@ -394,17 +542,25 @@ async function loadProjectIssues(projectKey) {
       // Clear existing options
       jiraParentSelect.innerHTML = '<option value="">None</option>';
       
+      console.log('Issues to add to parent selector:', result.issues);
+      
       // Add issues
-      result.issues.forEach(issue => {
-        const option = document.createElement('option');
-        option.value = issue.key;
-        option.textContent = `${issue.key}: ${issue.summary} (${issue.issueType})`;
-        jiraParentSelect.appendChild(option);
-      });
+      if (result.issues && result.issues.length > 0) {
+        result.issues.forEach(issue => {
+          const option = document.createElement('option');
+          option.value = issue.key;
+          option.textContent = `${issue.key}: ${issue.summary} (${issue.issueType})`;
+          jiraParentSelect.appendChild(option);
+        });
+        console.log('Added issues to parent selector');
+      } else {
+        console.log('No issues found to add to parent selector');
+      }
     } else {
       showStatus(`Error loading project issues: ${result.error}`, true);
     }
   } catch (error) {
+    console.error('Error in loadProjectIssues:', error);
     hideLoading();
     showStatus(`Error loading project issues: ${error.message}`, true);
   }
@@ -538,18 +694,27 @@ deselectAllBtn.addEventListener('click', () => {
 
 // Helper function to get Jira configuration from form
 function getJiraConfig() {
+  const isLevel3 = level3Radio.checked;
+  
   return {
     url: jiraUrlInput.value.trim(),
     username: jiraUsernameInput.value.trim(),
     apiToken: jiraApiTokenInput.value.trim(),
     projectKey: jiraProjectSelect.value.trim(),
     parentIssueKey: jiraParentSelect.value.trim(),
+    hierarchyLevel: isLevel3 ? 'level3' : 'level2', // Selected hierarchy level
     epicNameField: '', // No Epic Name field
     epicLinkField: '', // No Epic Link field
-    storyField: 'customfield_10577', // Use custom field 10577 for Scenario content
-    epicType: 'Epic', // Default Epic type
+    
+    // Get the selected content fields based on hierarchy level
+    featureField: isLevel3 ? featureContentField.value : null, // Only used in Level 3 hierarchy
+    storyField: storyContentField.value, // Used in both hierarchies
+    subtaskField: !isLevel3 ? subtaskContentField.value : null, // Only used in Level 2 hierarchy
+    
+    epicType: 'Level 3 Epic', // Level 2 Epic type
     featureType: 'Feature', // Default Feature type
-    storyType: 'Story' // Default Story type
+    storyType: 'Story', // Default Story type
+    subtaskType: 'Sub-task' // Default Sub-task type
   };
 }
 
@@ -580,25 +745,63 @@ function displayJiraResults(issues, jiraUrl) {
   const epics = issues.filter(issue => issue.type === 'epic');
   const features = issues.filter(issue => issue.type === 'feature');
   const stories = issues.filter(issue => issue.type === 'story');
+  const subtasks = issues.filter(issue => issue.type === 'subtask');
   
-  // Create HTML for each issue
-  for (const epic of epics) {
-    const epicElement = document.createElement('div');
-    epicElement.className = 'jira-item epic';
-    epicElement.innerHTML = `
-      <div class="jira-item-title">
-        <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Epic)
-      </div>
-      <a href="${epic.url}" class="jira-item-link" target="_blank">View in Jira</a>
-    `;
-    jiraResultContent.appendChild(epicElement);
+  // Check if we're using Level 3 or Level 2 as parent
+  const isLevel3Parent = level3Radio.checked;
+  
+  if (isLevel3Parent) {
+    // Level 3 → Epic → Feature → Story hierarchy
     
-    // Add related features
-    const epicFeatures = features.filter(feature => feature.epicKey === epic.key);
-    for (const feature of epicFeatures) {
+    // Create HTML for each issue
+    for (const epic of epics) {
+      const epicElement = document.createElement('div');
+      epicElement.className = 'jira-item epic';
+      epicElement.innerHTML = `
+        <div class="jira-item-title">
+          <span class="jira-item-key">${epic.key}</span>: ${epic.summary} (Epic)
+        </div>
+        <a href="${epic.url}" class="jira-item-link" target="_blank">View in Jira</a>
+      `;
+      jiraResultContent.appendChild(epicElement);
+      
+      // Add related features
+      const epicFeatures = features.filter(feature => feature.epicKey === epic.key);
+      for (const feature of epicFeatures) {
+        const featureElement = document.createElement('div');
+        featureElement.className = 'jira-item feature';
+        featureElement.style.marginLeft = '20px';
+        featureElement.innerHTML = `
+          <div class="jira-item-title">
+            <span class="jira-item-key">${feature.key}</span>: ${feature.summary} (Feature)
+          </div>
+          <a href="${feature.url}" class="jira-item-link" target="_blank">View in Jira</a>
+        `;
+        jiraResultContent.appendChild(featureElement);
+        
+        // Add related stories
+        const featureStories = stories.filter(story => story.featureKey === feature.key);
+        for (const story of featureStories) {
+          const storyElement = document.createElement('div');
+          storyElement.className = 'jira-item story';
+          storyElement.style.marginLeft = '40px';
+          storyElement.innerHTML = `
+            <div class="jira-item-title">
+              <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
+            </div>
+            <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
+          `;
+          jiraResultContent.appendChild(storyElement);
+        }
+      }
+    }
+  } else {
+    // Level 2 → Feature → Story → Sub-task hierarchy
+    
+    // Create HTML for each feature (directly under the selected Epic)
+    for (const feature of features) {
       const featureElement = document.createElement('div');
       featureElement.className = 'jira-item feature';
-      featureElement.style.marginLeft = '20px';
       featureElement.innerHTML = `
         <div class="jira-item-title">
           <span class="jira-item-key">${feature.key}</span>: ${feature.summary} (Feature)
@@ -612,7 +815,7 @@ function displayJiraResults(issues, jiraUrl) {
       for (const story of featureStories) {
         const storyElement = document.createElement('div');
         storyElement.className = 'jira-item story';
-        storyElement.style.marginLeft = '40px';
+        storyElement.style.marginLeft = '20px';
         storyElement.innerHTML = `
           <div class="jira-item-title">
             <span class="jira-item-key">${story.key}</span>: ${story.summary} (Scenario)
@@ -620,6 +823,21 @@ function displayJiraResults(issues, jiraUrl) {
           <a href="${story.url}" class="jira-item-link" target="_blank">View in Jira</a>
         `;
         jiraResultContent.appendChild(storyElement);
+        
+        // Add related subtasks
+        const storySubtasks = subtasks.filter(subtask => subtask.storyKey === story.key);
+        for (const subtask of storySubtasks) {
+          const subtaskElement = document.createElement('div');
+          subtaskElement.className = 'jira-item subtask';
+          subtaskElement.style.marginLeft = '40px';
+          subtaskElement.innerHTML = `
+            <div class="jira-item-title">
+              <span class="jira-item-key">${subtask.key}</span>: ${subtask.summary} (Sub-task)
+            </div>
+            <a href="${subtask.url}" class="jira-item-link" target="_blank">View in Jira</a>
+          `;
+          jiraResultContent.appendChild(subtaskElement);
+        }
       }
     }
   }
@@ -694,44 +912,83 @@ function generatePreviewItems(parsedFeatures, jiraConfig, folderName) {
     });
   };
   
-  // Use folder name as Epic name, or default if not provided
-  const epicName = folderName ? toTitleCase(folderName) : "Feature Files";
+  // Check if we're using Level 3 or Level 2 as parent
+  const isLevel3Parent = jiraConfig.hierarchyLevel === 'level3';
   
-  // Create Epic item
-  const epicId = `item-${idCounter++}`;
-  previewItems.push({
-    id: epicId,
-    type: 'epic',
-    name: epicName,
-    summary: epicName,
-    parentId: jiraConfig.parentIssueKey || null,
-    selected: true // Selected by default
-  });
-  
-  // Create Feature items
-  for (const feature of parsedFeatures) {
-    const featureId = `item-${idCounter++}`;
+  if (isLevel3Parent) {
+    // Level 3 → Epic → Feature → Story hierarchy
+    
+    // Use folder name as Epic name, or default if not provided
+    const epicName = folderName ? toTitleCase(folderName) : "Feature Files";
+    
+    // Create Epic item (Level 2)
+    const epicId = `item-${idCounter++}`;
     previewItems.push({
-      id: featureId,
-      type: 'feature',
-      name: feature.name,
-      summary: feature.name,
-      content: feature.content,
-      parentId: epicId,
+      id: epicId,
+      type: 'epic',
+      name: epicName,
+      summary: epicName,
+      parentId: jiraConfig.parentIssueKey || null,
       selected: true // Selected by default
     });
     
-    // Create Story items for each Scenario
-    for (const scenario of feature.scenarios) {
+    // Create Feature items (Level 1)
+    for (const feature of parsedFeatures) {
+      const featureId = `item-${idCounter++}`;
       previewItems.push({
-        id: `item-${idCounter++}`,
-        type: 'story',
-        name: scenario.name,
-        summary: scenario.name,
-        content: scenario.content,
-        parentId: featureId,
+        id: featureId,
+        type: 'feature',
+        name: feature.name,
+        summary: feature.name,
+        content: feature.content,
+        parentId: epicId,
         selected: true // Selected by default
       });
+      
+      // Create Story items (Level 0) for each Scenario
+      for (const scenario of feature.scenarios) {
+        previewItems.push({
+          id: `item-${idCounter++}`,
+          type: 'story',
+          name: scenario.name,
+          summary: scenario.name,
+          content: scenario.content,
+          parentId: featureId,
+          selected: true // Selected by default
+        });
+      }
+    }
+  } else {
+    // Level 2 → Story → Sub-task hierarchy
+    // Map Feature in file to Story in Jira, and Scenario in file to Sub-task in Jira
+    
+    // Create Story items (Level 1) directly under the selected Epic (Level 2)
+    // These come from Features in the file
+    for (const feature of parsedFeatures) {
+      const storyId = `item-${idCounter++}`;
+      previewItems.push({
+        id: storyId,
+        type: 'story',
+        name: feature.name,
+        summary: feature.name,
+        content: feature.content,
+        parentId: jiraConfig.parentIssueKey || null,
+        selected: true // Selected by default
+      });
+      
+      // Create Sub-task items for each Scenario
+      // These come from Scenarios in the file
+      for (const scenario of feature.scenarios) {
+        previewItems.push({
+          id: `item-${idCounter++}`,
+          type: 'subtask',
+          name: scenario.name,
+          summary: scenario.name,
+          content: scenario.content,
+          parentId: storyId,
+          selected: true // Selected by default
+        });
+      }
     }
   }
   
@@ -779,13 +1036,17 @@ function displayPreviewItems(items) {
       title.textContent = `Feature: ${item.name}`;
     } else if (item.type === 'story') {
       title.textContent = `Story: ${item.name}`;
+    } else if (item.type === 'subtask') {
+      title.textContent = `Sub-task: ${item.name}`;
     }
     
     // Create details
     const details = document.createElement('div');
     details.className = 'preview-item-details';
     
-    // Set details based on item type
+    // Set details based on item type and hierarchy level
+    const isLevel3Parent = level3Radio.checked;
+    
     if (item.type === 'epic') {
       details.textContent = `Will be created as a Level 2 Epic`;
       if (item.parentId) {
@@ -794,7 +1055,19 @@ function displayPreviewItems(items) {
     } else if (item.type === 'feature') {
       details.textContent = `Will be created as a Feature under Epic`;
     } else if (item.type === 'story') {
-      details.textContent = `Will be created as a Story under Feature`;
+      if (isLevel3Parent) {
+        details.textContent = `Will be created as a Story under Feature`;
+      } else {
+        // In Level 2 parent mode, Stories come from Features in the file
+        details.textContent = `Will be created as a Story under Epic ${item.parentId}`;
+      }
+    } else if (item.type === 'subtask') {
+      if (isLevel3Parent) {
+        details.textContent = `Will be created as a Sub-task under Story`;
+      } else {
+        // In Level 2 parent mode, Sub-tasks come from Scenarios in the file
+        details.textContent = `Will be created as a Sub-task under Story (from Feature file)`;
+      }
     }
     
     // Assemble the item
